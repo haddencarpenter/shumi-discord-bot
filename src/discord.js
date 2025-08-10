@@ -622,6 +622,18 @@ async function handleJoinCommand(message) {
   try {
     const { competition_id } = await ensureCurrentWeek();
     const userId = await ensureUser(message.author.id, message.author.username);
+    
+    // Check if already joined
+    const existingEntry = await query(
+      'SELECT id FROM entries WHERE competition_id=$1 AND user_id=$2',
+      [competition_id, userId]
+    );
+    
+    if (existingEntry.rows.length > 0) {
+      await message.reply('You\'re already in this week\'s competition!');
+      return;
+    }
+    
     await upsertEntry(competition_id, userId);
     await message.reply('Joined this week\'s competition!');
   } catch (err) {
