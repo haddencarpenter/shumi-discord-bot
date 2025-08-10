@@ -625,7 +625,9 @@ async function handleJoinCommand(message) {
     await upsertEntry(competition_id, userId);
     await message.reply('Joined this week\'s competition!');
   } catch (err) {
-    await message.reply('Failed to join competition.');
+    console.error('Join command error:', err.message);
+    console.error('Full error:', err);
+    await message.reply(`Failed to join competition: ${err.message}`);
   }
 }
 
