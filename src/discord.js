@@ -45,10 +45,10 @@ function getIsoWeek(d) {
 function startOfIsoWeek(d){const x=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));const k=(x.getUTCDay()+6)%7;x.setUTCDate(x.getUTCDate()-k);x.setUTCHours(0,0,0,0);return x;}
 function endOfIsoWeek(d){const s=startOfIsoWeek(d);const e=new Date(s);e.setUTCDate(s.getUTCDate()+7);e.setUTCHours(0,0,0,0);return e;}
 
-async function ensureUser(discordId) {
+async function ensureUser(discordId, username = 'Unknown') {
   const { rows } = await query(
-    'INSERT INTO users(discord_id) VALUES($1) ON CONFLICT(discord_id) DO UPDATE SET discord_id=$1 RETURNING id',
-    [discordId]
+    'INSERT INTO users(discord_id, discord_username) VALUES($1, $2) ON CONFLICT(discord_id) DO UPDATE SET discord_username=$2 RETURNING id',
+    [discordId, username]
   );
   return rows[0].id;
 }
@@ -201,7 +201,7 @@ export async function startDiscord() {
 
       if (i.commandName === 'join') {
         const { competition_id } = await ensureCurrentWeek();
-        const userId = await ensureUser(i.user.id);
+        const userId = await ensureUser(i.user.id, i.user.username);
         await upsertEntry(competition_id, userId);
         await i.reply({ content: 'joined this week' });
       }
@@ -223,7 +223,7 @@ export async function startDiscord() {
         }
         
         const { competition_id } = await ensureCurrentWeek();
-        const userId = await ensureUser(i.user.id);
+        const userId = await ensureUser(i.user.id, i.user.username);
         const entryId = await upsertEntry(competition_id, userId);
 
         if (action === 'enter') {
@@ -314,7 +314,7 @@ export async function startDiscord() {
         const { competition_id } = await ensureCurrentWeek();
         
         if (!target) {
-          const userId = await ensureUser(i.user.id);
+          const userId = await ensureUser(i.user.id, i.user.username);
           const entryResult = await query('SELECT id FROM entries WHERE competition_id=$1 AND user_id=$2', [competition_id, userId]);
           if (!entryResult.rows.length) {
             await i.editReply({ content: 'No positions found' });
@@ -497,7 +497,7 @@ async function handleEnterCommand(message, ticker, side) {
   try {
     const price = await fetchUsdPrice(ticker);
     const { competition_id } = await ensureCurrentWeek();
-    const userId = await ensureUser(message.author.id);
+    const userId = await ensureUser(message.author.id, message.author.username);
     const entryId = await upsertEntry(competition_id, userId);
 
     const existingTrade = await query(
@@ -526,7 +526,7 @@ async function handleExitCommand(message, ticker) {
   try {
     const price = await fetchUsdPrice(ticker);
     const { competition_id } = await ensureCurrentWeek();
-    const userId = await ensureUser(message.author.id);
+    const userId = await ensureUser(message.author.id, message.author.username);
     const entryId = await upsertEntry(competition_id, userId);
 
     const { rows } = await query(
@@ -566,7 +566,7 @@ async function handlePositionsCommand(message, target) {
     const { competition_id } = await ensureCurrentWeek();
     
     if (!target) {
-      const userId = await ensureUser(message.author.id);
+      const userId = await ensureUser(message.author.id, message.author.username);
       const entryResult = await query('SELECT id FROM entries WHERE competition_id=$1 AND user_id=$2', [competition_id, userId]);
       if (!entryResult.rows.length) {
         await reply.edit('No positions found');
@@ -621,7 +621,7 @@ async function handlePositionsCommand(message, target) {
 async function handleJoinCommand(message) {
   try {
     const { competition_id } = await ensureCurrentWeek();
-    const userId = await ensureUser(message.author.id);
+    const userId = await ensureUser(message.author.id, message.author.username);
     await upsertEntry(competition_id, userId);
     await message.reply('Joined this week\'s competition!');
   } catch (err) {
