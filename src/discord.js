@@ -612,6 +612,58 @@ async function handlePositionsCommand(message, target) {
       }
       
       await reply.edit(`**${message.author.username}'s Open Positions**\n${positions.join('\n')}\nTotal: ${rows.length} open positions • Live P&L`);
+    } else {
+      // Handle "positions all" - show everyone's positions
+      const allTrades = await query(`
+        SELECT t.*, u.discord_username, e.user_id 
+        FROM trades t 
+        JOIN entries e ON e.id = t.entry_id 
+        JOIN users u ON u.id = e.user_id 
+        WHERE e.competition_id = $1 AND t.status = 'open' 
+        ORDER BY u.discord_username, t.id DESC
+      `, [competition_id]);
+      
+      if (!allTrades.rows.length) {
+        await reply.edit('No open positions found for anyone this week.');
+        return;
+      }
+      
+      const userPositions = {};
+      for (const trade of allTrades.rows) {
+        if (!userPositions[trade.discord_username]) {
+          userPositions[trade.discord_username] = [];
+        }
+        
+        try {
+          const currentPrice = await fetchUsdPrice(trade.ticker);
+          const entryPrice = Number(trade.entry_price);
+          const side = trade.side || 'long';
+          
+          let pnlPct;
+          if (side === 'long') {
+            pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+          } else {
+            pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
+          }
+          
+          const sideSymbol = side === 'long' ? 'L' : 'S';
+          const pnlColor = pnlPct >= 0 ? '🟢' : '🔴';
+          const pnlSign = pnlPct >= 0 ? '+' : '';
+          
+          userPositions[trade.discord_username].push(`${sideSymbol} **${trade.ticker.toUpperCase()}** $${formatPrice(entryPrice)} ${pnlColor}${pnlSign}${pnlPct.toFixed(2)}%`);
+        } catch (err) {
+          const sideSymbol = (trade.side || 'long') === 'long' ? 'L' : 'S';
+          userPositions[trade.discord_username].push(`${sideSymbol} **${trade.ticker.toUpperCase()}** $${formatPrice(Number(trade.entry_price))} ⏳`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      const allPositionsText = Object.entries(userPositions)
+        .map(([username, positions]) => `**${username}:**\n${positions.join('\n')}`)
+        .join('\n\n');
+      
+      await reply.edit(`**Everyone's Open Positions**\n\n${allPositionsText}`);
     }
   } catch (err) {
     await reply.edit('Error loading positions. Try again later.');
