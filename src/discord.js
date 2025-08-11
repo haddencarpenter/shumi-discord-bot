@@ -199,6 +199,13 @@ export async function startDiscord() {
       } else if (command === 'debug' && message.author.id === '396270927811313665') {
         // Admin only debug command
         const subcommand = parts[1];
+        console.log(`[DEBUG] Command received. Subcommand: "${subcommand}", Parts:`, parts);
+        
+        if (!subcommand) {
+          await message.reply('Debug commands: `shumi debug [hype|lmeow|fartcoin|lido|ldo]`, `shumi debug fix [id] [price]`');
+          return;
+        }
+        
         if (subcommand === 'hype' || subcommand === 'lmeow' || subcommand === 'fartcoin' || subcommand === 'lido' || subcommand === 'ldo') {
           const ticker = normalizeTicker(subcommand);
           console.log(`[DEBUG ticker] raw:${subcommand} → normalized:${ticker}`);
@@ -304,7 +311,14 @@ export async function startDiscord() {
           await query("DELETE FROM trades WHERE id=$1", [tradeId]);
           
           await message.reply(`🗑️ Deleted ${trade.ticker.toUpperCase()} trade ${tradeId}:\nEntry: $${trade.entry_price}, Exit: $${trade.exit_price || 'N/A'}, PnL: ${Number(trade.pnl_pct || 0).toFixed(2)}%\n\n⚠️ This action cannot be undone!`);
+        } else {
+          console.log(`[DEBUG] Unknown subcommand: "${subcommand}"`);
+          await message.reply(`Unknown debug subcommand: "${subcommand}". Try: hype, lmeow, fartcoin, lido, ldo, fix, fixfull, delete`);
         }
+      } else if (command === 'debug') {
+        // Non-admin attempting debug
+        console.log(`[DEBUG] Non-admin attempt by ${message.author.id}`);
+        await message.reply(`Debug commands are admin-only. Your ID: ${message.author.id}`);
       } else {
         await message.reply('Unknown command. Try `shumi help` to see all available commands.');
       }
