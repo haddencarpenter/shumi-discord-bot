@@ -201,13 +201,17 @@ export async function fetchCoinData(ticker) {
   } catch (error) {
     console.error(`Price fetch failed for ${ticker}:`, error.message);
     
-    // Try to return stale cache if available
+    // Try to return stale cache if available (max 5 minutes old for fairness)
     if (priceCache.has(cacheKey)) {
       const stale = priceCache.get(cacheKey);
       const ageMinutes = Math.floor((now - stale.timestamp) / 60000);
-      console.log(`🗄️ Using stale cache for ${ticker} (${ageMinutes}m old)`);
-      // Add age info to the returned data so it can be displayed
-      return { ...stale.data, isStale: true, ageMinutes };
+      if (ageMinutes <= 5) {
+        console.log(`🗄️ Using stale cache for ${ticker} (${ageMinutes}m old)`);
+        // Add age info to the returned data so it can be displayed
+        return { ...stale.data, isStale: true, ageMinutes };
+      } else {
+        console.log(`⏰ Stale cache too old for ${ticker} (${ageMinutes}m), rejecting`);
+      }
     }
     
     // Provide more specific error messages

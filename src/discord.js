@@ -594,7 +594,7 @@ export async function startDiscord() {
             const u = await query('SELECT discord_username FROM users WHERE id=$1', [r.user_id]);
             return `${idx+1}. **${u.rows[0].discord_username}** ${Number(r.total).toFixed(2)}%`;
           }));
-          description += `**Final Rankings:**\n${closedLines.join('\n')}\n\n`;
+          description += `**Leaderboard:**\n${closedLines.join('\n')}\n\n`;
         }
         
         if (liveRows.length > 0) {
@@ -614,7 +614,7 @@ export async function startDiscord() {
           .setTitle(`Week ${getIsoWeek(new Date())} Competition`)
           .setColor(0xffd700)
           .setDescription(description)
-          .setFooter({ text: 'Close trades to appear in rankings • Live P&L in /positions' });
+          .setFooter({ text: 'Close trades to appear in rankings • Live P&L in shumi positions' });
         
         await i.editReply({ embeds: [embed] });
       }
@@ -952,7 +952,7 @@ async function handleLeaderboardCommand(message) {
         const u = await query('SELECT discord_username FROM users WHERE id=$1', [r.user_id]);
         return `${idx+1}. **${u.rows[0].discord_username}** ${Number(r.total).toFixed(2)}%`;
       }));
-      response += `**Final Rankings:**\n${closedLines.join('\n')}\n\n`;
+      response += `**Leaderboard:**\n${closedLines.join('\n')}\n\n`;
     }
     
     if (liveRows.length > 0) {
