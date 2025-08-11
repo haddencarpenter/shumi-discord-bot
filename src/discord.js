@@ -198,16 +198,27 @@ export async function startDiscord() {
       } else if (command === 'debug' && message.author.id === '396270927811313665') {
         // Admin only debug command
         const subcommand = parts[1];
-        if (subcommand === 'hype') {
+        if (subcommand === 'hype' || subcommand === 'lmeow' || subcommand === 'fartcoin') {
+          const ticker = subcommand;
           const { rows } = await query(
-            "SELECT id, ticker, entry_price, exit_price, pnl_pct, entry_time, exit_time, status FROM trades WHERE ticker='hype' ORDER BY id DESC LIMIT 3"
+            "SELECT id, ticker, entry_price, exit_price, pnl_pct, entry_time, exit_time, status FROM trades WHERE ticker=$1 ORDER BY id DESC LIMIT 3",
+            [ticker]
           );
+          if (!rows.length) {
+            await message.reply(`No ${ticker.toUpperCase()} trades found`);
+            return;
+          }
           const debug = rows.map(r => `ID:${r.id} ${r.ticker} ${r.status} entry:$${r.entry_price} exit:$${r.exit_price || 'N/A'} pnl:${r.pnl_pct || 'N/A'}%`).join('\n');
           await message.reply(`\`\`\`${debug}\`\`\``);
-        } else if (subcommand === 'fixhype' && parts[2]) {
-          // Fix HYPE PnL: shumi debug fixhype TRADE_ID
+        } else if (subcommand === 'fix' && parts[2] && parts[3]) {
+          // Fix any trade PnL: shumi debug fix TRADE_ID CORRECT_ENTRY_PRICE
           const tradeId = parts[2];
-          const correctEntryPrice = 45.0; // Approximate correct entry price
+          const correctEntryPrice = Number(parts[3]);
+          
+          if (isNaN(correctEntryPrice) || correctEntryPrice <= 0) {
+            await message.reply('Invalid entry price. Use: shumi debug fix TRADE_ID PRICE');
+            return;
+          }
           
           // Get the trade details
           const { rows } = await query("SELECT * FROM trades WHERE id=$1", [tradeId]);
@@ -217,14 +228,17 @@ export async function startDiscord() {
           }
           
           const trade = rows[0];
-          if (trade.ticker !== 'hype') {
-            await message.reply('Not a HYPE trade');
-            return;
-          }
+          const oldEntryPrice = Number(trade.entry_price);
+          const oldPnl = Number(trade.pnl_pct);
           
           // Calculate correct PnL
           const exitPrice = Number(trade.exit_price);
-          const correctPnl = ((exitPrice - correctEntryPrice) / correctEntryPrice) * 100;
+          let correctPnl;
+          if (trade.side === 'long') {
+            correctPnl = ((exitPrice - correctEntryPrice) / correctEntryPrice) * 100;
+          } else {
+            correctPnl = ((correctEntryPrice - exitPrice) / correctEntryPrice) * 100;
+          }
           
           // Update the trade
           await query(
@@ -232,7 +246,7 @@ export async function startDiscord() {
             [correctEntryPrice, correctPnl, tradeId]
           );
           
-          await message.reply(`Fixed trade ${tradeId}: entry $${trade.entry_price} → $${correctEntryPrice}, PnL ${Number(trade.pnl_pct).toFixed(2)}% → ${correctPnl.toFixed(2)}%`);
+          await message.reply(`Fixed ${trade.ticker.toUpperCase()} trade ${tradeId}:\nEntry: $${oldEntryPrice} → $${correctEntryPrice}\nPnL: ${oldPnl.toFixed(2)}% → ${correctPnl.toFixed(2)}%`);
         }
       } else {
         await message.reply('Unknown command. Try `shumi help` to see all available commands.');
