@@ -1,9 +1,11 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { fetchUsdPrice, fetchCoinData } from './price-cached.js';
-import { initAutoProfile } from './listeners/autoProfile.js';
-import { initImageProfileGuard } from './listeners/imageProfileGuard.js';
-import { query } from './db.js';
+import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { fetchUsdPrice, fetchCoinData } from './price-smart.js';
+import pg from 'pg';
+
+const { Pool } = pg;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const query = (text, params) => pool.query(text, params);
 
 const client = new Client({ 
   intents: [
@@ -43,10 +45,10 @@ function getIsoWeek(d) {
 function startOfIsoWeek(d){const x=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));const k=(x.getUTCDay()+6)%7;x.setUTCDate(x.getUTCDate()-k);x.setUTCHours(0,0,0,0);return x;}
 function endOfIsoWeek(d){const s=startOfIsoWeek(d);const e=new Date(s);e.setUTCDate(s.getUTCDate()+7);e.setUTCHours(0,0,0,0);return e;}
 
-async function ensureUser(discordId, username = 'Unknown') {
+async function ensureUser(discordId) {
   const { rows } = await query(
-    'INSERT INTO users(discord_id, discord_username) VALUES($1, $2) ON CONFLICT(discord_id) DO UPDATE SET discord_username=$2 RETURNING id',
-    [discordId, username]
+    'INSERT INTO users(discord_id) VALUES($1) ON CONFLICT(discord_id) DO UPDATE SET discord_id=$1 RETURNING id',
+    [discordId]
   );
   return rows[0].id;
 }
@@ -75,11 +77,6 @@ async function upsertEntry(compId, userId) {
 export async function startDiscord() {
   client.once('ready', () => {
     console.log('Bot connected as:', client.user.tag);
-    
-    // Initialize auto-profile features
-    initAutoProfile(client);
-    initImageProfileGuard(client);
-    console.log('Auto-profile features initialized');
   });
 
   const commands = [
@@ -112,26 +109,20 @@ export async function startDiscord() {
     new SlashCommandBuilder()
       .setName('price')
       .setDescription('get current prices')
-      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true)),
-    new SlashCommandBuilder()
-      .setName('autoprofile')
-      .setDescription('Enable/disable Shumi auto-profile in this channel')
-      .addStringOption(o => o.setName('state').setDescription('on or off').setRequired(true)
-        .addChoices({name:'on', value:'on'}, {name:'off', value:'off'}))
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true))
   ].map(c=>c.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   
-  if (process.env.DISCORD_GUILD_ID) {
+  if (process.env.GUILD_ID) {
     await rest.put(
-      Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID),
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commands }
     );
-    console.log(`Registered ${commands.length} guild commands for GUILD_ID ${process.env.DISCORD_GUILD_ID}`);
+    console.log(`Registered ${commands.length} guild commands for GUILD_ID ${process.env.GUILD_ID}`);
   } else {
     await rest.put(
-      Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
+      Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
     console.log(`Registered ${commands.length} global commands`);
@@ -210,7 +201,7 @@ export async function startDiscord() {
 
       if (i.commandName === 'join') {
         const { competition_id } = await ensureCurrentWeek();
-        const userId = await ensureUser(i.user.id, i.user.username);
+        const userId = await ensureUser(i.user.id);
         await upsertEntry(competition_id, userId);
         await i.reply({ content: 'joined this week' });
       }
@@ -232,7 +223,7 @@ export async function startDiscord() {
         }
         
         const { competition_id } = await ensureCurrentWeek();
-        const userId = await ensureUser(i.user.id, i.user.username);
+        const userId = await ensureUser(i.user.id);
         const entryId = await upsertEntry(competition_id, userId);
 
         if (action === 'enter') {
@@ -323,7 +314,7 @@ export async function startDiscord() {
         const { competition_id } = await ensureCurrentWeek();
         
         if (!target) {
-          const userId = await ensureUser(i.user.id, i.user.username);
+          const userId = await ensureUser(i.user.id);
           const entryResult = await query('SELECT id FROM entries WHERE competition_id=$1 AND user_id=$2', [competition_id, userId]);
           if (!entryResult.rows.length) {
             await i.editReply({ content: 'No positions found' });
@@ -453,20 +444,6 @@ export async function startDiscord() {
         
         await i.reply({ embeds: [embed] });
       }
-
-      if (i.commandName === 'autoprofile') {
-        const enabled = i.options.getString('state') === 'on';
-        await query(`
-          INSERT INTO channel_settings (channel_id, autoprofile_enabled)
-          VALUES ($1, $2)
-          ON CONFLICT (channel_id) DO UPDATE SET autoprofile_enabled=EXCLUDED.autoprofile_enabled, updated_at=NOW()
-        `, [i.channelId, enabled]);
-        
-        await i.reply({ 
-          content: `Auto-profile **${enabled ? 'enabled' : 'disabled'}** for <#${i.channelId}>.`, 
-          ephemeral: true 
-        });
-      }
     } catch (err) {
       console.error('[ERROR]', err);
       if (i.isRepliable()) await i.reply({ content:'error occurred. try again later.', ephemeral:true }).catch(()=>{});
@@ -520,7 +497,7 @@ async function handleEnterCommand(message, ticker, side) {
   try {
     const price = await fetchUsdPrice(ticker);
     const { competition_id } = await ensureCurrentWeek();
-    const userId = await ensureUser(message.author.id, message.author.username);
+    const userId = await ensureUser(message.author.id);
     const entryId = await upsertEntry(competition_id, userId);
 
     const existingTrade = await query(
@@ -549,7 +526,7 @@ async function handleExitCommand(message, ticker) {
   try {
     const price = await fetchUsdPrice(ticker);
     const { competition_id } = await ensureCurrentWeek();
-    const userId = await ensureUser(message.author.id, message.author.username);
+    const userId = await ensureUser(message.author.id);
     const entryId = await upsertEntry(competition_id, userId);
 
     const { rows } = await query(
@@ -589,7 +566,7 @@ async function handlePositionsCommand(message, target) {
     const { competition_id } = await ensureCurrentWeek();
     
     if (!target) {
-      const userId = await ensureUser(message.author.id, message.author.username);
+      const userId = await ensureUser(message.author.id);
       const entryResult = await query('SELECT id FROM entries WHERE competition_id=$1 AND user_id=$2', [competition_id, userId]);
       if (!entryResult.rows.length) {
         await reply.edit('No positions found');
@@ -635,58 +612,6 @@ async function handlePositionsCommand(message, target) {
       }
       
       await reply.edit(`**${message.author.username}'s Open Positions**\n${positions.join('\n')}\nTotal: ${rows.length} open positions • Live P&L`);
-    } else {
-      // Handle "positions all" - show everyone's positions
-      const allTrades = await query(`
-        SELECT t.*, u.discord_username, e.user_id 
-        FROM trades t 
-        JOIN entries e ON e.id = t.entry_id 
-        JOIN users u ON u.id = e.user_id 
-        WHERE e.competition_id = $1 AND t.status = 'open' 
-        ORDER BY u.discord_username, t.id DESC
-      `, [competition_id]);
-      
-      if (!allTrades.rows.length) {
-        await reply.edit('No open positions found for anyone this week.');
-        return;
-      }
-      
-      const userPositions = {};
-      for (const trade of allTrades.rows) {
-        if (!userPositions[trade.discord_username]) {
-          userPositions[trade.discord_username] = [];
-        }
-        
-        try {
-          const currentPrice = await fetchUsdPrice(trade.ticker);
-          const entryPrice = Number(trade.entry_price);
-          const side = trade.side || 'long';
-          
-          let pnlPct;
-          if (side === 'long') {
-            pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
-          } else {
-            pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
-          }
-          
-          const sideSymbol = side === 'long' ? 'L' : 'S';
-          const pnlColor = pnlPct >= 0 ? '🟢' : '🔴';
-          const pnlSign = pnlPct >= 0 ? '+' : '';
-          
-          userPositions[trade.discord_username].push(`${sideSymbol} **${trade.ticker.toUpperCase()}** $${formatPrice(entryPrice)} ${pnlColor}${pnlSign}${pnlPct.toFixed(2)}%`);
-        } catch (err) {
-          const sideSymbol = (trade.side || 'long') === 'long' ? 'L' : 'S';
-          userPositions[trade.discord_username].push(`${sideSymbol} **${trade.ticker.toUpperCase()}** $${formatPrice(Number(trade.entry_price))} ⏳`);
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-      
-      const allPositionsText = Object.entries(userPositions)
-        .map(([username, positions]) => `**${username}:**\n${positions.join('\n')}`)
-        .join('\n\n');
-      
-      await reply.edit(`**Everyone's Open Positions**\n\n${allPositionsText}`);
     }
   } catch (err) {
     await reply.edit('Error loading positions. Try again later.');
@@ -696,25 +621,11 @@ async function handlePositionsCommand(message, target) {
 async function handleJoinCommand(message) {
   try {
     const { competition_id } = await ensureCurrentWeek();
-    const userId = await ensureUser(message.author.id, message.author.username);
-    
-    // Check if already joined
-    const existingEntry = await query(
-      'SELECT id FROM entries WHERE competition_id=$1 AND user_id=$2',
-      [competition_id, userId]
-    );
-    
-    if (existingEntry.rows.length > 0) {
-      await message.reply('You\'re already in this week\'s competition!');
-      return;
-    }
-    
+    const userId = await ensureUser(message.author.id);
     await upsertEntry(competition_id, userId);
     await message.reply('Joined this week\'s competition!');
   } catch (err) {
-    console.error('Join command error:', err.message);
-    console.error('Full error:', err);
-    await message.reply(`Failed to join competition: ${err.message}`);
+    await message.reply('Failed to join competition.');
   }
 }
 

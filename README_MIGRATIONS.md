@@ -20,6 +20,32 @@ npm run migrate:down
 npm run db:backup
 ```
 
+## ⚠️ PostgreSQL Version Compatibility
+
+**IMPORTANT:** pg_dump must match your database server version to avoid connection errors.
+
+**Check your database version first:**
+```sql
+-- Connect to your database and run:
+SELECT version();
+```
+
+**Install matching PostgreSQL version:**
+```bash
+# If your database is PostgreSQL 17:
+brew install postgresql@17
+echo 'export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"' >> ~/.zshrc
+
+# If your database is PostgreSQL 16:
+brew install postgresql@16
+echo 'export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"' >> ~/.zshrc
+
+# Then reload your shell:
+source ~/.zshrc
+```
+
+**Common error:** `server version: 17.x; pg_dump version: 14.x` means version mismatch - upgrade your local pg_dump.
+
 ## Safe Deployment Process
 
 Always use the safe deployment script:
