@@ -30,6 +30,7 @@ import axios from 'axios';
  */
 
 const CANONICAL = {
+  // Major cryptocurrencies
   btc:'bitcoin', xbt:'bitcoin', eth:'ethereum', sol:'solana', link:'chainlink',
   ada:'cardano', avax:'avalanche-2', bnb:'binancecoin', doge:'dogecoin', trx:'tron',
   pol:'polygon-ecosystem-token', matic:'polygon-ecosystem-token', ltc:'litecoin',
@@ -37,7 +38,37 @@ const CANONICAL = {
   atom:'cosmos', xrp:'ripple', algo:'algorand', near:'near', ftm:'fantom',
   xlm:'stellar', vet:'vechain', icp:'internet-computer', fil:'filecoin',
   apt:'aptos', sui:'sui', sei:'sei-network', inj:'injective-protocol',
-  tia:'celestia', w:'wormhole', syn:'synapse-2', multi:'multichain', any:'anyswap'
+  tia:'celestia', syn:'synapse-2', multi:'multichain', any:'anyswap',
+  
+  // Single-letter tickers (comprehensive mapping to avoid ambiguity)
+  w:'wormhole',           // Wormhole governance token
+  x:'x',                  // X token (if exists, or can map to specific project)
+  z:'zcash',              // Zcash (ZEC actually, but Z might be used)
+  t:'threshold-network-token', // Threshold Network Token
+  n:'numeraire',          // Numeraire (NMR, but N used sometimes)
+  s:'synthetix-network-token', // Synthetix (SNX, but S sometimes used)
+  r:'revain',             // Revain token
+  q:'quant-network',      // Quant (QNT, but Q sometimes used)
+  p:'protocol',           // Protocol tokens (can be ambiguous, may need specific)
+  o:'origin-protocol',    // Origin Protocol (OGN)
+  m:'mirror-protocol',    // Mirror Protocol
+  l:'chainlink',          // Link (alternative ticker)
+  k:'kyber-network-crystal', // Kyber (KNC)
+  j:'jupiter',            // Jupiter (JUP, newer)
+  i:'internet-computer',  // Internet Computer (ICP alternative)
+  h:'helium',             // Helium (HNT)
+  g:'the-graph',          // The Graph (GRT)
+  f:'fetch-ai',           // Fetch.ai (FET)
+  e:'enjincoin',          // Enjin Coin (ENJ)
+  d:'dogecoin',           // Dogecoin (alternative)
+  c:'celsius-degree-token', // Celsius (CEL)
+  b:'bancor',             // Bancor Network Token
+  a:'aave',               // Aave (alternative to AAVE)
+  
+  // Stablecoins and major tokens (in case of single letter usage)
+  u:'uniswap',            // Uniswap (UNI alternative)
+  v:'vechain',            // VeChain (VET alternative)
+  y:'yearn-finance',      // Yearn.finance (YFI)
 };
 
 const QUOTES = [
