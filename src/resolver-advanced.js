@@ -39,6 +39,7 @@ const CANONICAL = {
   xlm:'stellar', vet:'vechain', icp:'internet-computer', fil:'filecoin',
   apt:'aptos', sui:'sui', sei:'sei-network', inj:'injective-protocol',
   tia:'celestia', syn:'synapse-2', multi:'multichain', any:'anyswap',
+  pengu:'pudgy-penguins', // Pudgy Penguins NFT token
   
   // Single-letter tickers (comprehensive mapping to avoid ambiguity)
   w:'wormhole',           // Wormhole governance token
