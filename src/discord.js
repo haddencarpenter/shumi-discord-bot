@@ -193,8 +193,10 @@ export async function startDiscord() {
         await handleLeaderboardCommand(message);
       } else if (command === 'help') {
         await handleHelpCommand(message);
-      } else if (command === 'debug' && message.author.id === '190916650143318016') {
-        // Admin only debug command
+      } else if (command === 'whoami') {
+        await message.reply(`Your Discord ID: ${message.author.id}`);
+      } else if (command === 'debug') {
+        // Debug command (temporarily open - will restrict to your ID later)
         const subcommand = parts[1];
         if (subcommand === 'hype') {
           const { rows } = await query(
