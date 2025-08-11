@@ -203,7 +203,7 @@ export async function startDiscord() {
       
       if (['trade', 'join', 'enter', 'exit'].includes(i.commandName)) {
         if (!checkRateLimit(i.user.id)) {
-          await i.reply({ content: 'Rate limit: max 5 actions per 30 seconds. Please wait.', ephemeral: true });
+          await i.reply({ content: 'Rate limit: max 5 actions per 30 seconds. Please wait.', flags: 64 });
           return;
         }
       }
@@ -227,7 +227,7 @@ export async function startDiscord() {
           price = await fetchUsdPrice(ticker);
           console.log(`Price fetched: ${ticker} = $${price}`);
         } catch (err) {
-          await i.reply({ content: `ticker not found. try common tickers like btc, eth, sol, doge, shib, pepe`, ephemeral: true });
+          await i.reply({ content: `ticker not found. try common tickers like btc, eth, sol, doge, shib, pepe`, flags: 64 });
           return;
         }
         
@@ -243,7 +243,7 @@ export async function startDiscord() {
           if (existingTrade.rows.length > 0) {
             await i.reply({ 
               content: `You already have an open ${existingTrade.rows[0].side} position on ${ticker.toUpperCase()}. Close it first with \`/exit ${ticker}\` to enter a new trade.`, 
-              ephemeral: true 
+              flags: 64 
             });
             return;
           }
@@ -278,7 +278,7 @@ export async function startDiscord() {
              ORDER BY id DESC LIMIT 1`, [entryId, ticker]
           );
           if (!rows.length) {
-            await i.reply({ content:'no open trade for that ticker', ephemeral:true });
+            await i.reply({ content:'no open trade for that ticker', flags: 64 });
             return;
           }
           const t = rows[0];
@@ -464,12 +464,12 @@ export async function startDiscord() {
         
         await i.reply({ 
           content: `Auto-profile **${enabled ? 'enabled' : 'disabled'}** for <#${i.channelId}>.`, 
-          ephemeral: true 
+          flags: 64 
         });
       }
     } catch (err) {
       console.error('[ERROR]', err);
-      if (i.isRepliable()) await i.reply({ content:'error occurred. try again later.', ephemeral:true }).catch(()=>{});
+      if (i.isRepliable()) await i.reply({ content:'error occurred. try again later.', flags: 64 }).catch(()=>{});
     }
   });
 
