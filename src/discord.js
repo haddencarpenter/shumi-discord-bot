@@ -29,7 +29,9 @@ function formatPrice(price) {
   if (price >= 1000) return price.toFixed(2);
   if (price >= 1) return price.toFixed(4);
   if (price >= 0.001) return price.toFixed(6);
-  return price.toFixed(8);
+  if (price >= 0.000001) return price.toFixed(8);
+  if (price >= 0.000000001) return price.toFixed(10);
+  return price.toExponential(3); // For extremely small values like 1e-12
 }
 
 function getIsoWeek(d) {
@@ -438,8 +440,11 @@ export async function startDiscord() {
       }
 
       if (i.commandName === 'leaderboard') {
+        await i.deferReply();
         const { competition_id } = await ensureCurrentWeek();
-        const { rows } = await query(
+        
+        // Get closed trades leaderboard
+        const { rows: closedRows } = await query(
           `SELECT e.user_id, SUM(COALESCE(t.pnl_pct,0)) as total
            FROM trades t JOIN entries e ON e.id=t.entry_id
            WHERE e.competition_id=$1 AND t.status='closed'
@@ -447,23 +452,51 @@ export async function startDiscord() {
           [competition_id]
         );
         
-        if (!rows.length) {
-          await i.reply({ content: 'No results yet' });
+        // Get live positions for current leaderboard
+        const { rows: liveRows } = await query(
+          `SELECT e.user_id, u.discord_username, 
+                  COUNT(t.id) as open_positions,
+                  SUM(CASE WHEN t.status='closed' THEN COALESCE(t.pnl_pct,0) ELSE 0 END) as closed_pnl
+           FROM entries e 
+           JOIN users u ON u.id = e.user_id
+           LEFT JOIN trades t ON t.entry_id = e.id
+           WHERE e.competition_id=$1
+           GROUP BY e.user_id, u.discord_username
+           HAVING COUNT(t.id) > 0
+           ORDER BY closed_pnl DESC`,
+          [competition_id]
+        );
+        
+        let description = '';
+        
+        if (closedRows.length > 0) {
+          const closedLines = await Promise.all(closedRows.map(async (r, idx) => {
+            const u = await query('SELECT discord_username FROM users WHERE id=$1', [r.user_id]);
+            return `#${idx+1} **${u.rows[0].discord_username}** — ${Number(r.total).toFixed(2)}%`;
+          }));
+          description += `**🏆 Closed Trades Rankings:**\n${closedLines.join('\n')}\n\n`;
+        }
+        
+        if (liveRows.length > 0) {
+          const liveLines = liveRows.map((r, idx) => {
+            const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% closed)` : '';
+            return `#${idx+1} **${r.discord_username}** — ${r.open_positions} open${closedPnlText}`;
+          });
+          description += `**📊 Current Participants:**\n${liveLines.join('\n')}`;
+        }
+        
+        if (!closedRows.length && !liveRows.length) {
+          await i.editReply({ content: 'No participants yet this week. Use `shumi join` to get started!' });
           return;
         }
         
-        const lines = await Promise.all(rows.map(async (r, idx) => {
-          const u = await query('SELECT discord_id FROM users WHERE id=$1', [r.user_id]);
-          return `#${idx+1} <@${u.rows[0].discord_id}> — ${Number(r.total).toFixed(2)}%`;
-        }));
-        
         const embed = new EmbedBuilder()
-          .setTitle('Weekly Leaderboard')
+          .setTitle(`📈 Week ${getIsoWeek(new Date())} Competition`)
           .setColor(0xffd700)
-          .setDescription(lines.join('\n'))
-          .setFooter({ text: `Week ${getIsoWeek(new Date())}` });
+          .setDescription(description)
+          .setFooter({ text: 'Close trades to appear in rankings • Live P&L in /positions' });
         
-        await i.reply({ embeds: [embed] });
+        await i.editReply({ embeds: [embed] });
       }
 
       if (i.commandName === 'autoprofile') {
@@ -736,8 +769,11 @@ async function handleJoinCommand(message) {
 
 async function handleLeaderboardCommand(message) {
   try {
+    const reply = await message.reply('Loading leaderboard...');
     const { competition_id } = await ensureCurrentWeek();
-    const { rows } = await query(
+    
+    // Get both closed and current participants
+    const { rows: closedRows } = await query(
       `SELECT e.user_id, SUM(COALESCE(t.pnl_pct,0)) as total
        FROM trades t JOIN entries e ON e.id=t.entry_id
        WHERE e.competition_id=$1 AND t.status='closed'
@@ -745,17 +781,45 @@ async function handleLeaderboardCommand(message) {
       [competition_id]
     );
     
-    if (!rows.length) {
-      await message.reply('No results yet');
+    const { rows: liveRows } = await query(
+      `SELECT e.user_id, u.discord_username, 
+              COUNT(t.id) as open_positions,
+              SUM(CASE WHEN t.status='closed' THEN COALESCE(t.pnl_pct,0) ELSE 0 END) as closed_pnl
+       FROM entries e 
+       JOIN users u ON u.id = e.user_id
+       LEFT JOIN trades t ON t.entry_id = e.id
+       WHERE e.competition_id=$1
+       GROUP BY e.user_id, u.discord_username
+       HAVING COUNT(t.id) > 0
+       ORDER BY closed_pnl DESC`,
+      [competition_id]
+    );
+    
+    let response = `**📈 Week ${getIsoWeek(new Date())} Competition**\n\n`;
+    
+    if (closedRows.length > 0) {
+      const closedLines = await Promise.all(closedRows.map(async (r, idx) => {
+        const u = await query('SELECT discord_username FROM users WHERE id=$1', [r.user_id]);
+        return `#${idx+1} **${u.rows[0].discord_username}** — ${Number(r.total).toFixed(2)}%`;
+      }));
+      response += `**🏆 Closed Trades Rankings:**\n${closedLines.join('\n')}\n\n`;
+    }
+    
+    if (liveRows.length > 0) {
+      const liveLines = liveRows.map((r, idx) => {
+        const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% closed)` : '';
+        return `#${idx+1} **${r.discord_username}** — ${r.open_positions} open${closedPnlText}`;
+      });
+      response += `**📊 Current Participants:**\n${liveLines.join('\n')}\n\n`;
+    }
+    
+    if (!closedRows.length && !liveRows.length) {
+      await reply.edit('No participants yet this week. Use `shumi join` to get started!');
       return;
     }
     
-    const lines = await Promise.all(rows.map(async (r, idx) => {
-      const u = await query('SELECT discord_id FROM users WHERE id=$1', [r.user_id]);
-      return `#${idx+1} <@${u.rows[0].discord_id}> — ${Number(r.total).toFixed(2)}%`;
-    }));
-    
-    await message.reply(`**Weekly Leaderboard**\n${lines.join('\n')}\n\nWeek ${getIsoWeek(new Date())}`);
+    response += `*Close trades to appear in rankings • Live P&L in \`shumi positions\`*`;
+    await reply.edit(response);
   } catch (err) {
     await message.reply('Failed to load leaderboard.');
   }
