@@ -3,7 +3,10 @@ import { fetchCoinData } from '../price-smart.js';
 import pg from 'pg';
 
 const { Pool } = pg;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
 const query = (text, params) => pool.query(text, params);
 
 const TICKER_RE = /\b([a-z]{2,10})(?:usdt|usd|perp)?\b/i;
