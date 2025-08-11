@@ -472,17 +472,17 @@ export async function startDiscord() {
         if (closedRows.length > 0) {
           const closedLines = await Promise.all(closedRows.map(async (r, idx) => {
             const u = await query('SELECT discord_username FROM users WHERE id=$1', [r.user_id]);
-            return `#${idx+1} **${u.rows[0].discord_username}** — ${Number(r.total).toFixed(2)}%`;
+            return `${idx+1}. **${u.rows[0].discord_username}** ${Number(r.total).toFixed(2)}%`;
           }));
-          description += `**🏆 Closed Trades Rankings:**\n${closedLines.join('\n')}\n\n`;
+          description += `**Final Rankings:**\n${closedLines.join('\n')}\n\n`;
         }
         
         if (liveRows.length > 0) {
           const liveLines = liveRows.map((r, idx) => {
-            const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% closed)` : '';
-            return `#${idx+1} **${r.discord_username}** — ${r.open_positions} open${closedPnlText}`;
+            const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% realized)` : '';
+            return `${idx+1}. **${r.discord_username}** ${r.open_positions} position${r.open_positions > 1 ? 's' : ''}${closedPnlText}`;
           });
-          description += `**📊 Current Participants:**\n${liveLines.join('\n')}`;
+          description += `**Current Participants:**\n${liveLines.join('\n')}`;
         }
         
         if (!closedRows.length && !liveRows.length) {
@@ -491,7 +491,7 @@ export async function startDiscord() {
         }
         
         const embed = new EmbedBuilder()
-          .setTitle(`📈 Week ${getIsoWeek(new Date())} Competition`)
+          .setTitle(`Week ${getIsoWeek(new Date())} Competition`)
           .setColor(0xffd700)
           .setDescription(description)
           .setFooter({ text: 'Close trades to appear in rankings • Live P&L in /positions' });
@@ -795,22 +795,22 @@ async function handleLeaderboardCommand(message) {
       [competition_id]
     );
     
-    let response = `**📈 Week ${getIsoWeek(new Date())} Competition**\n\n`;
+    let response = `**Week ${getIsoWeek(new Date())} Competition**\n\n`;
     
     if (closedRows.length > 0) {
       const closedLines = await Promise.all(closedRows.map(async (r, idx) => {
         const u = await query('SELECT discord_username FROM users WHERE id=$1', [r.user_id]);
-        return `#${idx+1} **${u.rows[0].discord_username}** — ${Number(r.total).toFixed(2)}%`;
+        return `${idx+1}. **${u.rows[0].discord_username}** ${Number(r.total).toFixed(2)}%`;
       }));
-      response += `**🏆 Closed Trades Rankings:**\n${closedLines.join('\n')}\n\n`;
+      response += `**Final Rankings:**\n${closedLines.join('\n')}\n\n`;
     }
     
     if (liveRows.length > 0) {
       const liveLines = liveRows.map((r, idx) => {
-        const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% closed)` : '';
-        return `#${idx+1} **${r.discord_username}** — ${r.open_positions} open${closedPnlText}`;
+        const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% realized)` : '';
+        return `${idx+1}. **${r.discord_username}** ${r.open_positions} position${r.open_positions > 1 ? 's' : ''}${closedPnlText}`;
       });
-      response += `**📊 Current Participants:**\n${liveLines.join('\n')}\n\n`;
+      response += `**Current Participants:**\n${liveLines.join('\n')}\n\n`;
     }
     
     if (!closedRows.length && !liveRows.length) {
@@ -818,7 +818,7 @@ async function handleLeaderboardCommand(message) {
       return;
     }
     
-    response += `*Close trades to appear in rankings • Live P&L in \`shumi positions\`*`;
+    response += `Close trades to appear in rankings • Live P&L in \`shumi positions\``;
     await reply.edit(response);
   } catch (err) {
     await message.reply('Failed to load leaderboard.');
