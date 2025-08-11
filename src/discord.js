@@ -193,6 +193,45 @@ export async function startDiscord() {
         await handleLeaderboardCommand(message);
       } else if (command === 'help') {
         await handleHelpCommand(message);
+      } else if (command === 'debug' && message.author.id === '190916650143318016') {
+        // Admin only debug command
+        const subcommand = parts[1];
+        if (subcommand === 'hype') {
+          const { rows } = await query(
+            "SELECT id, ticker, entry_price, exit_price, pnl_pct, entry_time, exit_time, status FROM trades WHERE ticker='hype' ORDER BY id DESC LIMIT 3"
+          );
+          const debug = rows.map(r => `ID:${r.id} ${r.ticker} ${r.status} entry:$${r.entry_price} exit:$${r.exit_price || 'N/A'} pnl:${r.pnl_pct || 'N/A'}%`).join('\n');
+          await message.reply(`\`\`\`${debug}\`\`\``);
+        } else if (subcommand === 'fixhype' && parts[2]) {
+          // Fix HYPE PnL: shumi debug fixhype TRADE_ID
+          const tradeId = parts[2];
+          const correctEntryPrice = 45.0; // Approximate correct entry price
+          
+          // Get the trade details
+          const { rows } = await query("SELECT * FROM trades WHERE id=$1", [tradeId]);
+          if (!rows.length) {
+            await message.reply('Trade not found');
+            return;
+          }
+          
+          const trade = rows[0];
+          if (trade.ticker !== 'hype') {
+            await message.reply('Not a HYPE trade');
+            return;
+          }
+          
+          // Calculate correct PnL
+          const exitPrice = Number(trade.exit_price);
+          const correctPnl = ((exitPrice - correctEntryPrice) / correctEntryPrice) * 100;
+          
+          // Update the trade
+          await query(
+            "UPDATE trades SET entry_price=$1, pnl_pct=$2 WHERE id=$3",
+            [correctEntryPrice, correctPnl, tradeId]
+          );
+          
+          await message.reply(`Fixed trade ${tradeId}: entry $${trade.entry_price} → $${correctEntryPrice}, PnL ${Number(trade.pnl_pct).toFixed(2)}% → ${correctPnl.toFixed(2)}%`);
+        }
       } else {
         await message.reply('Unknown command. Try `shumi help` to see all available commands.');
       }
