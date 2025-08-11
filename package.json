@@ -12,7 +12,7 @@
     "migrate:create": "node-pg-migrate create --migrations-dir migrations",
     "db:backup": "mkdir -p backups && pg_dump \"$DATABASE_URL\" -Fc -f backups/shumi_$(date +%F_%H%M%S).dump && echo 'Backup created'",
     "db:sanity": "psql \"$DATABASE_URL\" -c \"select count(*) from pg_tables where schemaname='public';\"",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "axios": "^1.11.0",
