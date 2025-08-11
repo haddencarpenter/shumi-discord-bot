@@ -247,6 +247,61 @@ export async function startDiscord() {
           );
           
           await message.reply(`Fixed ${trade.ticker.toUpperCase()} trade ${tradeId}:\nEntry: $${oldEntryPrice} → $${correctEntryPrice}\nPnL: ${oldPnl.toFixed(2)}% → ${correctPnl.toFixed(2)}%`);
+        } else if (subcommand === 'fixfull' && parts[2] && parts[3] && parts[4]) {
+          // Fix both entry and exit prices: shumi debug fixfull TRADE_ID ENTRY_PRICE EXIT_PRICE
+          const tradeId = parts[2];
+          const correctEntryPrice = Number(parts[3]);
+          const correctExitPrice = Number(parts[4]);
+          
+          if (isNaN(correctEntryPrice) || correctEntryPrice <= 0 || isNaN(correctExitPrice) || correctExitPrice <= 0) {
+            await message.reply('Invalid prices. Use: shumi debug fixfull TRADE_ID ENTRY_PRICE EXIT_PRICE');
+            return;
+          }
+          
+          // Get the trade details
+          const { rows } = await query("SELECT * FROM trades WHERE id=$1", [tradeId]);
+          if (!rows.length) {
+            await message.reply('Trade not found');
+            return;
+          }
+          
+          const trade = rows[0];
+          const oldEntryPrice = Number(trade.entry_price);
+          const oldExitPrice = Number(trade.exit_price);
+          const oldPnl = Number(trade.pnl_pct);
+          
+          // Calculate correct PnL
+          let correctPnl;
+          if (trade.side === 'long') {
+            correctPnl = ((correctExitPrice - correctEntryPrice) / correctEntryPrice) * 100;
+          } else {
+            correctPnl = ((correctEntryPrice - correctExitPrice) / correctEntryPrice) * 100;
+          }
+          
+          // Update the trade
+          await query(
+            "UPDATE trades SET entry_price=$1, exit_price=$2, pnl_pct=$3 WHERE id=$4",
+            [correctEntryPrice, correctExitPrice, correctPnl, tradeId]
+          );
+          
+          await message.reply(`Fixed ${trade.ticker.toUpperCase()} trade ${tradeId}:\nEntry: $${oldEntryPrice} → $${correctEntryPrice}\nExit: $${oldExitPrice} → $${correctExitPrice}\nPnL: ${oldPnl.toFixed(2)}% → ${correctPnl.toFixed(2)}%`);
+        } else if (subcommand === 'delete' && parts[2]) {
+          // Delete a trade entirely: shumi debug delete TRADE_ID
+          const tradeId = parts[2];
+          
+          // Get the trade details first
+          const { rows } = await query("SELECT * FROM trades WHERE id=$1", [tradeId]);
+          if (!rows.length) {
+            await message.reply('Trade not found');
+            return;
+          }
+          
+          const trade = rows[0];
+          
+          // Delete the trade
+          await query("DELETE FROM trades WHERE id=$1", [tradeId]);
+          
+          await message.reply(`🗑️ Deleted ${trade.ticker.toUpperCase()} trade ${tradeId}:\nEntry: $${trade.entry_price}, Exit: $${trade.exit_price || 'N/A'}, PnL: ${Number(trade.pnl_pct || 0).toFixed(2)}%\n\n⚠️ This action cannot be undone!`);
         }
       } else {
         await message.reply('Unknown command. Try `shumi help` to see all available commands.');
