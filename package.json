@@ -6,7 +6,13 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "sentiment": "node src/sentiment.js"
+    "sentiment": "node src/sentiment.js",
+    "migrate:up": "DATABASE_URL=\"${MIGRATOR_DATABASE_URL:-$DATABASE_URL}\" node-pg-migrate up --migrations-dir migrations --no-check-order",
+    "migrate:down": "DATABASE_URL=\"${MIGRATOR_DATABASE_URL:-$DATABASE_URL}\" node-pg-migrate down --migrations-dir migrations",
+    "migrate:create": "node-pg-migrate create --migrations-dir migrations",
+    "db:backup": "mkdir -p backups && pg_dump \"$DATABASE_URL\" -Fc -f backups/shumi_$(date +%F_%H%M%S).dump && echo 'Backup created'",
+    "db:sanity": "psql \"$DATABASE_URL\" -c \"select count(*) from pg_tables where schemaname='public';\"",
+    "prepare": "husky"
   },
   "dependencies": {
     "axios": "^1.11.0",
@@ -14,11 +20,15 @@
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "node-cron": "^4.2.1",
+    "node-pg-migrate": "^8.0.3",
     "pg": "^8.16.3",
     "sqlite3": "^5.1.6"
   },
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   },
   "keywords": [
     "discord",

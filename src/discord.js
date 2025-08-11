@@ -1,6 +1,8 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { fetchUsdPrice, fetchCoinData } from './price-smart.js';
+import { initAutoProfile } from './listeners/autoProfile.js';
+import { initImageProfileGuard } from './listeners/imageProfileGuard.js';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -77,6 +79,11 @@ async function upsertEntry(compId, userId) {
 export async function startDiscord() {
   client.once('ready', () => {
     console.log('Bot connected as:', client.user.tag);
+    
+    // Initialize auto-profile features
+    initAutoProfile(client);
+    initImageProfileGuard(client);
+    console.log('Auto-profile features initialized');
   });
 
   const commands = [
@@ -109,7 +116,13 @@ export async function startDiscord() {
     new SlashCommandBuilder()
       .setName('price')
       .setDescription('get current prices')
-      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true))
+      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true)),
+    new SlashCommandBuilder()
+      .setName('autoprofile')
+      .setDescription('Enable/disable Shumi auto-profile in this channel')
+      .addStringOption(o => o.setName('state').setDescription('on or off').setRequired(true)
+        .addChoices({name:'on', value:'on'}, {name:'off', value:'off'}))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
   ].map(c=>c.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -443,6 +456,20 @@ export async function startDiscord() {
           .setFooter({ text: `Week ${getIsoWeek(new Date())}` });
         
         await i.reply({ embeds: [embed] });
+      }
+
+      if (i.commandName === 'autoprofile') {
+        const enabled = i.options.getString('state') === 'on';
+        await query(`
+          INSERT INTO channel_settings (channel_id, autoprofile_enabled)
+          VALUES ($1, $2)
+          ON CONFLICT (channel_id) DO UPDATE SET autoprofile_enabled=EXCLUDED.autoprofile_enabled, updated_at=NOW()
+        `, [i.channelId, enabled]);
+        
+        await i.reply({ 
+          content: `Auto-profile **${enabled ? 'enabled' : 'disabled'}** for <#${i.channelId}>.`, 
+          ephemeral: true 
+        });
       }
     } catch (err) {
       console.error('[ERROR]', err);
