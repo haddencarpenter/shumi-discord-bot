@@ -67,7 +67,16 @@ export async function fetchUsdPrice(ticker) {
     'wojak': 'wojak', 'turbo': 'turbo', 'bonk': 'bonk', 'wif': 'dogwifcoin',
     'popcat': 'popcat', 'neiro': 'first-neiro-on-ethereum', 'pnut': 'peanut-the-squirrel',
     'goat': 'goatseus-maximus', 'mew': 'cat-in-a-dogs-world', 'brett': 'based-brett',
-    'cake': 'pancakeswap-token', 'sushi': 'sushi', 'comp': 'compound-governance-token'
+    'cake': 'pancakeswap-token', 'sushi': 'sushi', 'comp': 'compound-governance-token',
+    // Recent/missing tokens
+    'ena': 'ethena', 'hype': 'hyperliquid', 'lmeow': 'book-of-meme-3-0',
+    'ray': 'raydium', 'jup': 'jupiter-exchange-solana', 'pyth': 'pyth-network',
+    'ondo': 'ondo-finance', 'pendle': 'pendle', 'arb': 'arbitrum', 'op': 'optimism',
+    'strk': 'starknet', 'blur': 'blur', 'ldo': 'lido-dao', 'rpl': 'rocket-pool',
+    'sui': 'sui', 'apt': 'aptos', 'sei': 'sei-network', 'inj': 'injective-protocol',
+    'tia': 'celestia', 'w': 'wormhole', 'jto': 'jito-governance-token',
+    'wen': 'wen-4', 'jupiter': 'jupiter-exchange-solana', 'drift': 'drift-protocol',
+    'kamino': 'kamino', 'marginfi': 'marginfi', 'sanctum': 'sanctum-2'
   };
   
   const coinId = TICKER_MAP[input] || input;
@@ -78,15 +87,20 @@ export async function fetchUsdPrice(ticker) {
     if (!coinData || coinData.usd == null) throw new Error(`price not found for ${ticker}`);
     return Number(coinData.usd);
   } catch (error) {
+    console.log(`[Price] Failed to fetch ${ticker} -> ${coinId}: ${error.message}`);
     // If mapping failed, try the raw ticker as backup
     if (coinId !== input) {
       try {
+        console.log(`[Price] Retrying ${ticker} with raw input: ${input}`);
         const data = await fetchMany([input]);
         const coinData = data[input];
         if (coinData && coinData.usd != null) {
+          console.log(`[Price] Success with raw input: ${ticker} = $${coinData.usd}`);
           return Number(coinData.usd);
         }
-      } catch {}
+      } catch (retryError) {
+        console.log(`[Price] Raw input also failed: ${retryError.message}`);
+      }
     }
     throw new Error(`price not found for ${ticker}. try common tickers like btc, eth, sol, doge, shib, pepe`);
   }
@@ -114,7 +128,16 @@ export async function fetchCoinData(ticker) {
     'wojak': 'wojak', 'turbo': 'turbo', 'bonk': 'bonk', 'wif': 'dogwifcoin',
     'popcat': 'popcat', 'neiro': 'first-neiro-on-ethereum', 'pnut': 'peanut-the-squirrel',
     'goat': 'goatseus-maximus', 'mew': 'cat-in-a-dogs-world', 'brett': 'based-brett',
-    'cake': 'pancakeswap-token', 'sushi': 'sushi', 'comp': 'compound-governance-token'
+    'cake': 'pancakeswap-token', 'sushi': 'sushi', 'comp': 'compound-governance-token',
+    // Recent/missing tokens
+    'ena': 'ethena', 'hype': 'hyperliquid', 'lmeow': 'book-of-meme-3-0',
+    'ray': 'raydium', 'jup': 'jupiter-exchange-solana', 'pyth': 'pyth-network',
+    'ondo': 'ondo-finance', 'pendle': 'pendle', 'arb': 'arbitrum', 'op': 'optimism',
+    'strk': 'starknet', 'blur': 'blur', 'ldo': 'lido-dao', 'rpl': 'rocket-pool',
+    'sui': 'sui', 'apt': 'aptos', 'sei': 'sei-network', 'inj': 'injective-protocol',
+    'tia': 'celestia', 'w': 'wormhole', 'jto': 'jito-governance-token',
+    'wen': 'wen-4', 'jupiter': 'jupiter-exchange-solana', 'drift': 'drift-protocol',
+    'kamino': 'kamino', 'marginfi': 'marginfi', 'sanctum': 'sanctum-2'
   };
   
   const coinId = TICKER_MAP[input] || input;
@@ -130,19 +153,24 @@ export async function fetchCoinData(ticker) {
       marketCap: coinData.usd_market_cap ?? null
     };
   } catch (error) {
+    console.log(`[CoinData] Failed to fetch ${ticker} -> ${coinId}: ${error.message}`);
     // If mapping failed, try the raw ticker as backup
     if (coinId !== input) {
       try {
+        console.log(`[CoinData] Retrying ${ticker} with raw input: ${input}`);
         const data = await fetchMany([input]);
         const coinData = data[input];
         if (coinData) {
+          console.log(`[CoinData] Success with raw input: ${ticker} = $${coinData.usd}`);
           return {
             price: coinData.usd ?? 0,
             change24h: coinData.usd_24h_change ?? 0,
             marketCap: coinData.usd_market_cap ?? null
           };
         }
-      } catch {}
+      } catch (retryError) {
+        console.log(`[CoinData] Raw input also failed: ${retryError.message}`);
+      }
     }
     throw new Error(`coin not found for ${ticker}`);
   }
