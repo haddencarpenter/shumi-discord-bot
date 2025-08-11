@@ -26,7 +26,10 @@ const COMMON_TICKERS = {
   'usdc': 'usd-coin',
   'mog': 'mog-coin',
   'pengu': 'pudgy-penguins',
-  'brett': 'based-brett'
+  'brett': 'based-brett',
+  'ena': 'ethena',
+  'hype': 'hyperliquid',
+  'ray': 'raydium'
 };
 
 async function searchCoin(ticker) {

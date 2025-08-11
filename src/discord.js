@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { fetchUsdPrice, fetchCoinData } from './price-cached.js';
+import { fetchUsdPrice, fetchCoinData } from './price-smart.js';
 import { query } from './db.js';
 
 const enableAuto = (process.env.SHUMI_AUTOPROFILE || 'off') === 'on';
