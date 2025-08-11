@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { fetchUsdPrice, fetchCoinData } from './price-cached.js';
-import { initAutoProfile } from './listeners/autoProfile.js';
-import { initImageProfileGuard } from './listeners/imageProfileGuard.js';
 import { query } from './db.js';
+
+const enableAuto = (process.env.SHUMI_AUTOPROFILE || 'off') === 'on';
 
 const client = new Client({ 
   intents: [
@@ -73,16 +73,22 @@ async function upsertEntry(compId, userId) {
 }
 
 export async function startDiscord() {
-  client.once('ready', () => {
+  client.once('ready', async () => {
     console.log('Bot connected as:', client.user.tag);
     
-    // Initialize auto-profile features
-    initAutoProfile(client);
-    initImageProfileGuard(client);
-    console.log('Auto-profile features initialized');
+    // Conditionally initialize auto-profile features
+    if (enableAuto) {
+      const { initAutoProfile } = await import('./listeners/autoProfile.js');
+      const { initImageProfileGuard } = await import('./listeners/imageProfileGuard.js');
+      initAutoProfile(client);
+      initImageProfileGuard(client);
+      console.log('Auto-profile features: ENABLED');
+    } else {
+      console.log('Auto-profile features: DISABLED');
+    }
   });
 
-  const commands = [
+  const coreCommands = [
     new SlashCommandBuilder().setName('ping').setDescription('test if bot is alive'),
     new SlashCommandBuilder().setName('join').setDescription('join the current week'),
     new SlashCommandBuilder()
@@ -112,14 +118,20 @@ export async function startDiscord() {
     new SlashCommandBuilder()
       .setName('price')
       .setDescription('get current prices')
-      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true)),
+      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true))
+  ];
+
+  // Only add autoprofile command if feature is enabled
+  const autoCommands = enableAuto ? [
     new SlashCommandBuilder()
       .setName('autoprofile')
       .setDescription('Enable/disable Shumi auto-profile in this channel')
       .addStringOption(o => o.setName('state').setDescription('on or off').setRequired(true)
         .addChoices({name:'on', value:'on'}, {name:'off', value:'off'}))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-  ].map(c=>c.toJSON());
+  ] : [];
+
+  const commands = [...coreCommands, ...autoCommands].map(c=>c.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   
@@ -455,6 +467,10 @@ export async function startDiscord() {
       }
 
       if (i.commandName === 'autoprofile') {
+        if (!enableAuto) {
+          await i.reply({ content: 'Auto-profile features are currently disabled.', flags: 64 });
+          return;
+        }
         const enabled = i.options.getString('state') === 'on';
         await query(`
           INSERT INTO channel_settings (channel_id, autoprofile_enabled)
@@ -746,38 +762,31 @@ async function handleLeaderboardCommand(message) {
 }
 
 async function handleHelpCommand(message) {
-  const helpText = `**🍄 Shumi Trading Bot Commands**
+  const helpText = `**🍄 Shumi Trading Bot - Core Commands**
 
-**Trading Commands:**
-\`shumi price btc eth doge\` - Get current prices (up to 6 coins)
-\`shumi enter arc long\` - Enter a long position  
-\`shumi enter doge short\` - Enter a short position
-\`shumi exit btc\` - Close your position on BTC
-\`shumi positions\` - View your open positions with live P&L
-\`shumi positions all\` - View everyone's positions
-
-**Competition Commands:**
+**Competition:**
 \`shumi join\` - Join this week's trading competition
 \`shumi leaderboard\` - View weekly rankings
 
-**Other Commands:**
+**Trading:**
+\`shumi enter btc long\` - Enter a long position  
+\`shumi enter doge short\` - Enter a short position
+\`shumi exit btc\` - Close your position
+\`shumi positions\` - View your open positions with live P&L
+\`shumi positions all\` - View everyone's positions
+
+**Prices:**
+\`shumi price btc eth doge\` - Get current prices (up to 6 coins)
+
+**Other:**
 \`shumi ping\` - Test if bot is responsive
 \`shumi help\` - Show this help message
 
-**Tips:**
-• You can only have **one position per ticker** (no averaging down)
-• **Short positions** profit when prices fall
-• All prices show **live P&L** performance
-• Rate limited to 5 actions per 30 seconds
-
-**Competition Schedule:**
-• Starts: Monday 00:00 UTC
-• Ends: Sunday 23:59 UTC
-• Resets automatically each week
-
-**Competition Rules:**
-Points = |P&L%| × 10 × TimeBonus × WinMultiplier
-Good luck trading!`;
+**Rules:**
+• One position per ticker (no averaging)
+• Shorts profit when prices fall
+• Rate limit: 5 actions per 30 seconds
+• Competition resets weekly (Monday 00:00 UTC)`;
 
   await message.reply(helpText);
 }
