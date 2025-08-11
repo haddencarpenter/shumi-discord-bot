@@ -1,59 +1,39 @@
 // src/db.js
 import pg from 'pg';
+
 const { Pool } = pg;
 
-const internalUrl = process.env.DATABASE_URL_INTERNAL;
-const externalUrl = process.env.DATABASE_URL_EXTERNAL;
-const preferInternal = (process.env.DB_PREFERRED || 'internal') === 'internal';
-
-function makePool(url, ssl) {
-  return new Pool({ connectionString: url, ssl });
+// Redact password for a one-time boot log
+function redact(url) {
+  try {
+    const u = new URL(url);
+    if (u.password) u.password = '***';
+    return u.toString();
+  } catch {
+    return '<invalid DATABASE_URL>';
+  }
 }
 
-async function tryPool(url, ssl) {
-  const pool = makePool(url, ssl);
-  await pool.query('select 1'); // sanity
-  return pool;
+const connStr = process.env.DATABASE_URL;
+if (!connStr) {
+  throw new Error('DATABASE_URL is not set');
 }
 
-async function connectDb() {
-  const attempts = [];
+// If you ever accidentally set an internal host, this log will show it
+console.log('[DB] Using DATABASE_URL:', redact(connStr));
 
-  const tryInternal = async () => {
-    if (!internalUrl) return null;
-    try {
-      const p = await tryPool(internalUrl, false); // internal = no SSL
-      console.log('DB connected (internal)');
-      return p;
-    } catch (e) {
-      // ENOTFOUND when .internal isn't resolvable; allow fallback
-      if (['ENOTFOUND', 'ECONNREFUSED', 'DEPTH_ZERO_SELF_SIGNED_CERT'].includes(e.code || '')) {
-        attempts.push(e);
-        return null;
-      }
-      throw e;
-    }
-  };
+// For Render's EXTERNAL URL we include sslmode=require in the string,
+// but node-postgres sometimes still needs ssl: { rejectUnauthorized: false }
+// for managed PGs that present an intermediate CA. This is harmless even
+// if the CA is trusted.
+const pool = new Pool({
+  connectionString: connStr,
+  ssl: connStr.includes('render.com') ? { rejectUnauthorized: false } : undefined,
+  max: 10, // keep modest pool
+});
 
-  const tryExternal = async () => {
-    if (!externalUrl) return null;
-    try {
-      const p = await tryPool(externalUrl, { rejectUnauthorized: false }); // external over SSL
-      console.log('DB connected (external)');
-      return p;
-    } catch (e) {
-      attempts.push(e);
-      return null;
-    }
-  };
-
-  let pool = null;
-  if (preferInternal) pool = await tryInternal() || await tryExternal();
-  else pool = await tryExternal() || await tryInternal();
-
-  if (!pool) throw attempts[attempts.length - 1] || new Error('DB connect failed');
-  return pool;
+async function query(text, params) {
+  return pool.query(text, params);
 }
 
-export const pool = await connectDb();
-export const query = (text, params) => pool.query(text, params);
+export { query, pool };
