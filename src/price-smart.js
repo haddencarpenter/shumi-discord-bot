@@ -28,7 +28,6 @@ const COMMON_TICKERS = {
   'pengu': 'pudgy-penguins',
   'brett': 'based-brett',
   'ena': 'ethena',
-  'hype': 'hyperliquid',
   'ray': 'raydium'
 };
 
@@ -79,14 +78,16 @@ function rankCoinMatches(ticker, coins) {
     // Name contains ticker
     if (name.includes(input)) score += 25;
     
-    // Higher market cap rank = better score
+    // Higher market cap rank = better score (much more aggressive)
     if (coin.market_cap_rank) {
-      score += Math.max(0, 1000 - coin.market_cap_rank);
+      score += Math.max(0, 2000 - coin.market_cap_rank);
     }
     
-    // Prefer coins with lower market cap rank (higher market cap)
-    if (coin.market_cap_rank && coin.market_cap_rank <= 100) score += 500;
-    if (coin.market_cap_rank && coin.market_cap_rank <= 500) score += 200;
+    // Heavily prefer coins with lower market cap rank (higher market cap)
+    if (coin.market_cap_rank && coin.market_cap_rank <= 50) score += 2000;
+    if (coin.market_cap_rank && coin.market_cap_rank <= 100) score += 1500;
+    if (coin.market_cap_rank && coin.market_cap_rank <= 200) score += 1000;
+    if (coin.market_cap_rank && coin.market_cap_rank <= 500) score += 500;
     
     return { ...coin, score };
   }).sort((a, b) => b.score - a.score);

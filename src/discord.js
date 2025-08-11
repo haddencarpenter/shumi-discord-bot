@@ -367,6 +367,16 @@ export async function startDiscord() {
                 pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
               }
               
+              // Debug logging for extreme P&L values
+              if (Math.abs(pnlPct) > 1000) {
+                console.log(`[P&L DEBUG] ${r.ticker}: entry=$${entryPrice} current=$${currentPrice} pnl=${pnlPct.toFixed(2)}%`);
+              }
+              
+              // Cap extreme P&L values (likely data errors)
+              if (Math.abs(pnlPct) > 1000) {
+                pnlPct = pnlPct > 0 ? 999.99 : -999.99;
+              }
+              
               positionsWithPnl.push({ ...r, currentPrice, pnlPct });
             } catch (err) {
               console.log(`Failed to fetch price for ${r.ticker}: ${err.message}`);
@@ -668,6 +678,16 @@ async function handlePositionsCommand(message, target) {
             pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
           }
           
+          // Debug logging for extreme P&L values
+          if (Math.abs(pnlPct) > 1000) {
+            console.log(`[P&L DEBUG] ${r.ticker}: entry=$${entryPrice} current=$${currentPrice} pnl=${pnlPct.toFixed(2)}%`);
+          }
+          
+          // Cap extreme P&L values (likely data errors)
+          if (Math.abs(pnlPct) > 1000) {
+            pnlPct = pnlPct > 0 ? 999.99 : -999.99;
+          }
+          
           const sideSymbol = side === 'long' ? 'L' : 'S';
           const pnlColor = pnlPct >= 0 ? '🟢' : '🔴';
           const pnlSign = pnlPct >= 0 ? '+' : '';
@@ -716,6 +736,16 @@ async function handlePositionsCommand(message, target) {
             pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
           } else {
             pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
+          }
+          
+          // Debug logging for extreme P&L values
+          if (Math.abs(pnlPct) > 1000) {
+            console.log(`[P&L DEBUG] ${trade.ticker}: entry=$${entryPrice} current=$${currentPrice} pnl=${pnlPct.toFixed(2)}%`);
+          }
+          
+          // Cap extreme P&L values (likely data errors)
+          if (Math.abs(pnlPct) > 1000) {
+            pnlPct = pnlPct > 0 ? 999.99 : -999.99;
           }
           
           const sideSymbol = side === 'long' ? 'L' : 'S';
