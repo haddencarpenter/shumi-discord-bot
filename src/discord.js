@@ -666,9 +666,19 @@ async function handlePriceCommand(message, tickersInput) {
           : `$${(coinData.marketCap / 1e6).toFixed(0)}M`;
         result += ` • ${mcap}`;
       }
+      
+      // Show if data is stale
+      if (coinData.isStale) {
+        result += ` ⏰${coinData.ageMinutes}m old`;
+      }
+      
       results.push(result);
     } catch (err) {
-      results.push(`**${ticker.toUpperCase()}** not found`);
+      if (err.message.includes('429') || err.message.includes('rate limit')) {
+        results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+      } else {
+        results.push(`**${ticker.toUpperCase()}** not found`);
+      }
     }
     if (tickers.length > 1) {
       await new Promise(resolve => setTimeout(resolve, 200));

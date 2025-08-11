@@ -204,8 +204,15 @@ export async function fetchCoinData(ticker) {
     // Try to return stale cache if available
     if (priceCache.has(cacheKey)) {
       const stale = priceCache.get(cacheKey);
-      console.log(`🗄️ Using stale cache for ${ticker} (${Math.floor((now - stale.timestamp)/1000)}s old)`);
-      return stale.data;
+      const ageMinutes = Math.floor((now - stale.timestamp) / 60000);
+      console.log(`🗄️ Using stale cache for ${ticker} (${ageMinutes}m old)`);
+      // Add age info to the returned data so it can be displayed
+      return { ...stale.data, isStale: true, ageMinutes };
+    }
+    
+    // Provide more specific error messages
+    if (error.message.includes('429') || error.message.includes('rate limit')) {
+      throw new Error(`rate limited for ${ticker} - try again in 1 minute`);
     }
     
     throw new Error(`price not found for ${ticker}. try common tickers like btc, eth, sol, doge, shib, pepe`);
