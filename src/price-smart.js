@@ -1,8 +1,11 @@
 import axios from 'axios';
 
-// Cache for search results (1 hour)
+// Cache for search results (1 hour) and price data (1 minute)
 const searchCache = new Map();
-const CACHE_DURATION = 60 * 60 * 1000;
+const priceCache = new Map();
+const SEARCH_CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+const PRICE_CACHE_DURATION = 60 * 1000; // 1 minute
+let lastPriceCall = 0;
 
 // Basic mappings for very common tickers to avoid API calls
 const COMMON_TICKERS = {
@@ -38,7 +41,7 @@ async function searchCoin(ticker) {
   // Check cache first
   if (searchCache.has(cacheKey)) {
     const cached = searchCache.get(cacheKey);
-    if (now - cached.timestamp < CACHE_DURATION) {
+    if (now - cached.timestamp < SEARCH_CACHE_DURATION) {
       return cached.results;
     }
   }
@@ -131,6 +134,15 @@ export async function fetchUsdPrice(ticker) {
   return coinData.price;
 }
 
+async function rateLimit() {
+  const now = Date.now();
+  const timeSince = now - lastPriceCall;
+  if (timeSince < 1100) { // 1.1 second between calls
+    await new Promise(resolve => setTimeout(resolve, 1100 - timeSince));
+  }
+  lastPriceCall = Date.now();
+}
+
 export async function fetchCoinData(ticker) {
   const input = ticker.toLowerCase().trim();
   
@@ -143,13 +155,27 @@ export async function fetchCoinData(ticker) {
     };
   }
   
+  // Check price cache first
+  const cacheKey = input;
+  const now = Date.now();
+  if (priceCache.has(cacheKey)) {
+    const cached = priceCache.get(cacheKey);
+    if (now - cached.timestamp < PRICE_CACHE_DURATION) {
+      console.log(`💾 Cache hit: ${ticker}`);
+      return cached.data;
+    }
+  }
+  
   try {
     // Find best matching coin ID
     const coinId = await findBestCoinId(input);
     
+    // Rate limit API calls
+    await rateLimit();
+    
     const q = encodeURIComponent(coinId);
     const { data } = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${q}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`, { 
-      timeout: 5000
+      timeout: 8000
     });
     
     const k = Object.keys(data)[0];
@@ -158,14 +184,30 @@ export async function fetchCoinData(ticker) {
     }
     
     const coin = data[k];
-    return {
+    const result = {
       price: Number(coin.usd),
       change24h: Number(coin.usd_24h_change || 0),
       marketCap: coin.usd_market_cap ? Number(coin.usd_market_cap) : null,
       coinId: k // Return the actual coin ID used
     };
+    
+    // Cache the result
+    priceCache.set(cacheKey, {
+      data: result,
+      timestamp: now
+    });
+    
+    return result;
   } catch (error) {
     console.error(`Price fetch failed for ${ticker}:`, error.message);
+    
+    // Try to return stale cache if available
+    if (priceCache.has(cacheKey)) {
+      const stale = priceCache.get(cacheKey);
+      console.log(`🗄️ Using stale cache for ${ticker} (${Math.floor((now - stale.timestamp)/1000)}s old)`);
+      return stale.data;
+    }
+    
     throw new Error(`price not found for ${ticker}. try common tickers like btc, eth, sol, doge, shib, pepe`);
   }
 }
