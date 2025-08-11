@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { fetchUsdPrice, fetchCoinData } from './price-smart.js';
 import { query } from './db.js';
+import { normalizeTicker } from './util/tickers.js';
 
 const enableAuto = (process.env.SHUMI_AUTOPROFILE || 'off') === 'on';
 
@@ -198,8 +199,9 @@ export async function startDiscord() {
       } else if (command === 'debug' && message.author.id === '396270927811313665') {
         // Admin only debug command
         const subcommand = parts[1];
-        if (subcommand === 'hype' || subcommand === 'lmeow' || subcommand === 'fartcoin') {
-          const ticker = subcommand;
+        if (subcommand === 'hype' || subcommand === 'lmeow' || subcommand === 'fartcoin' || subcommand === 'lido' || subcommand === 'ldo') {
+          const ticker = normalizeTicker(subcommand);
+          console.log(`[DEBUG ticker] raw:${subcommand} → normalized:${ticker}`);
           const { rows } = await query(
             "SELECT id, ticker, entry_price, exit_price, pnl_pct, entry_time, exit_time, status FROM trades WHERE ticker=$1 ORDER BY id DESC LIMIT 3",
             [ticker]
