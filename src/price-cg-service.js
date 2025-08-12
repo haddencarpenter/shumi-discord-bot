@@ -439,9 +439,13 @@ export function createEncouragementMessage(results, strategy) {
 }
 
 /**
- * Create provenance footer for Discord embeds
+ * Get service status for debugging (internal use only)
  */
-export function createProvenanceFooter() {
+export function getDebugInfo() {
   const indexInfo = getIndexInfo();
-  return `Resolver: cashtag | Source: ${indexInfo.source} | v${process.env.npm_package_version || 'dev'}`;
+  return {
+    resolver: 'cashtag',
+    source: indexInfo.source,
+    version: process.env.npm_package_version || 'dev'
+  };
 }

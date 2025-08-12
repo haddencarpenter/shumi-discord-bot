@@ -717,10 +717,8 @@ async function handlePriceCommand(message, tickersInput) {
     }
   }
   
-  // Add provenance footer
-  const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
-  
-  await reply.edit(results.join('\n') + provenance);
+  // Clean user-facing output (no technical details)
+  await reply.edit(results.join('\n'));
 }
 
 async function handleEnterCommand(message, ticker, side) {
@@ -752,12 +750,8 @@ async function handleEnterCommand(message, ticker, side) {
       [entryId, ticker.toLowerCase(), side, price, new Date().toISOString(), '', 'open']
     );
 
-    // Add provenance footer
-    const method = coinData.method || 'unknown';
-    const source = coinData.source || 'unknown';
-    const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
-
-    await reply.edit(`**${side.toUpperCase()}** position entered on **${ticker.toUpperCase()}** at $${formatPrice(price)} (Trade #${rows[0].id})` + provenance);
+    // Clean position entry confirmation
+    await reply.edit(`**${side.toUpperCase()}** position entered on **${ticker.toUpperCase()}** at $${formatPrice(price)} (Trade #${rows[0].id})`);
   } catch (err) {
     await reply.edit(`Failed to enter trade: ${err.message}`);
   }
@@ -796,13 +790,9 @@ async function handleExitCommand(message, ticker) {
       [price, new Date().toISOString(), pnlPct, t.id]
     );
 
-    // Add provenance footer
-    const method = coinData.method || 'unknown';
-    const source = coinData.source || 'unknown';
-    const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
-
+    // Clean position exit confirmation
     const pnlColor = pnlPct >= 0 ? '🟢' : '🔴';
-    await reply.edit(`**${(t.side || 'long').toUpperCase()}** position closed on **${ticker.toUpperCase()}** at $${formatPrice(price)} ${pnlColor}${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%` + provenance);
+    await reply.edit(`**${(t.side || 'long').toUpperCase()}** position closed on **${ticker.toUpperCase()}** at $${formatPrice(price)} ${pnlColor}${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
   } catch (err) {
     await reply.edit(`Failed to exit trade: ${err.message}`);
   }
@@ -878,10 +868,8 @@ async function handlePositionsCommand(message, target) {
         }
       }
       
-      // Add provenance footer
-      const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
-      
-      await reply.edit(`**${message.author.username}'s Open Positions**\n${positions.join('\n')}\nTotal: ${rows.length} open positions • Live P&L` + provenance);
+      // Clean positions display
+      await reply.edit(`**${message.author.username}'s Open Positions**\n${positions.join('\n')}\nTotal: ${rows.length} open positions • Live P&L`);
     } else {
       // Handle "positions all" - show everyone's positions
       const allTrades = await query(`
@@ -951,10 +939,8 @@ async function handlePositionsCommand(message, target) {
         .map(([username, positions]) => `**${username}:**\n${positions.join('\n')}`)
         .join('\n\n');
       
-      // Add provenance footer
-      const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
-      
-      await reply.edit(`**Everyone's Open Positions**\n\n${allPositionsText}` + provenance);
+      // Clean all positions display
+      await reply.edit(`**Everyone's Open Positions**\n\n${allPositionsText}`);
     }
   } catch (err) {
     await reply.edit('Error loading positions. Try again later.');
@@ -1055,7 +1041,7 @@ async function handleStatusCommand(message) {
 **Started:** ${new Date(startedAt).toLocaleString()}
 **Uptime:** ${uptimeHours}h ${uptimeMinutes}m
 **Process:** Single instance (advisory lock active)
-**Resolver:** SD disambiguation fix applied ✅
+**Status:** All systems operational
 
 **Health:** All systems operational 🟢`;
 
