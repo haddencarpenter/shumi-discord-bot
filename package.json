@@ -5,6 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "prestart": "node -e \"const {execSync}=require('node:child_process'); const fs=require('node:fs'); let v='dev'; try{v=execSync('git rev-parse --short HEAD').toString().trim()}catch{} fs.writeFileSync('src/version.generated.json', JSON.stringify({git:v,builtAt:new Date().toISOString()}))\"",
     "start": "node src/index.js",
     "sentiment": "node src/sentiment.js",
     "test:regression": "node scripts/test-regression.js",

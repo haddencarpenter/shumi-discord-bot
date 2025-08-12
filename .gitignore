@@ -39,6 +39,7 @@ Thumbs.db
 # Build outputs
 dist/
 build/
+src/version.generated.json
 
 # Testing
 coverage/
