@@ -27,13 +27,27 @@ export async function fetchCoinData(ticker) {
   
   // Handle stablecoins at fixed $1.00
   if (input === 'usdt' || input === 'usdc') {
-    return {
+    const result = {
       price: 1.0,
       change24h: 0,
       marketCap: null,
       method: 'fixed-stablecoin',
       source: 'hardcoded'
     };
+    
+    // Log provenance for anomaly detection
+    const { shortVersion } = await import('./version.js');
+    console.log(JSON.stringify({
+      evt: 'price_reply',
+      q: ticker,
+      coinId: input,
+      method: result.method,
+      source: result.source,
+      ts: Date.now(),
+      v: shortVersion
+    }));
+    
+    return result;
   }
   
   // Check price cache first
@@ -93,6 +107,18 @@ export async function fetchCoinData(ticker) {
       method: resolution.type === 'pair' ? 'pair-resolution' : 'canonical-or-search',
       source: 'coingecko-rest'
     };
+    
+    // Log provenance for anomaly detection
+    const { shortVersion } = await import('./version.js');
+    console.log(JSON.stringify({
+      evt: 'price_reply',
+      q: ticker,
+      coinId,
+      method: result.method,
+      source: result.source,
+      ts: Date.now(),
+      v: shortVersion
+    }));
     
     // Cache the result
     priceCache.set(cacheKey, {

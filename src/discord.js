@@ -3,7 +3,7 @@ import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuil
 import { fetchUsdPrice, fetchCoinData } from './price-enhanced-smart.js';
 import { query } from './db.js';
 import { normalizeTicker } from './util/tickers.js';
-import { version, startedAt } from './version.js';
+import { version, shortVersion, startedAt } from './version.js';
 
 const enableAuto = (process.env.SHUMI_AUTOPROFILE || 'off') === 'on';
 
@@ -77,6 +77,10 @@ async function upsertEntry(compId, userId) {
 }
 
 export async function startDiscord() {
+  // Warm resolver cache before starting Discord client
+  const { loadCache } = await import('./resolve.js');
+  await loadCache(true);
+  
   client.once('ready', async () => {
     console.log('Bot connected as:', client.user.tag);
     
@@ -154,9 +158,12 @@ export async function startDiscord() {
   }
 
   // Handle text-based commands with "shumi" prefix
+  const processed = new Set();
   client.on('messageCreate', async (message) => {
     try {
       if (message.author.bot) return;
+      if (processed.has(message.id)) return; // Prevent duplicate processing
+      processed.add(message.id);
       
       const text = message.content.toLowerCase().trim();
       if (!text.startsWith('shumi ')) return;
@@ -711,7 +718,6 @@ async function handlePriceCommand(message, tickersInput) {
   }
   
   // Add provenance footer
-  const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
   const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
   
   await reply.edit(results.join('\n') + provenance);
@@ -747,7 +753,6 @@ async function handleEnterCommand(message, ticker, side) {
     );
 
     // Add provenance footer
-    const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
     const method = coinData.method || 'unknown';
     const source = coinData.source || 'unknown';
     const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
@@ -792,7 +797,6 @@ async function handleExitCommand(message, ticker) {
     );
 
     // Add provenance footer
-    const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
     const method = coinData.method || 'unknown';
     const source = coinData.source || 'unknown';
     const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
@@ -875,7 +879,6 @@ async function handlePositionsCommand(message, target) {
       }
       
       // Add provenance footer
-      const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
       const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
       
       await reply.edit(`**${message.author.username}'s Open Positions**\n${positions.join('\n')}\nTotal: ${rows.length} open positions • Live P&L` + provenance);
@@ -949,7 +952,6 @@ async function handlePositionsCommand(message, target) {
         .join('\n\n');
       
       // Add provenance footer
-      const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
       const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
       
       await reply.edit(`**Everyone's Open Positions**\n\n${allPositionsText}` + provenance);

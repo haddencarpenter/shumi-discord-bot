@@ -245,4 +245,23 @@ export async function debugResolve(query) {
   }
 }
 
+/** Warm the resolver cache with common tickers to prevent first-query delays */
+export async function loadCache(verbose = false) {
+  const commonTickers = ['btc', 'eth', 'sol', 'doge', 'shib', 'pepe', 'sd', 'matic', 'uni', 'link'];
+  if (verbose) console.log('🔥 Warming resolver cache...');
+  
+  const results = await Promise.allSettled(
+    commonTickers.map(async ticker => {
+      const id = await resolveCoinId(ticker);
+      if (verbose && id) console.log(`  ${ticker} → ${id}`);
+      return { ticker, id };
+    })
+  );
+  
+  const successful = results.filter(r => r.status === 'fulfilled' && r.value.id).length;
+  if (verbose) console.log(`✅ Resolver cache warmed: ${successful}/${commonTickers.length} tickers`);
+  
+  return successful;
+}
+
 export { CANONICAL };
