@@ -30,7 +30,9 @@ export async function fetchCoinData(ticker) {
     return {
       price: 1.0,
       change24h: 0,
-      marketCap: null
+      marketCap: null,
+      method: 'fixed-stablecoin',
+      source: 'hardcoded'
     };
   }
   
@@ -87,7 +89,9 @@ export async function fetchCoinData(ticker) {
       marketCap: coin.usd_market_cap ? Number(coin.usd_market_cap) : null,
       coinId: coinId, // Return the actual coin ID used
       isPair: isPair, // Flag if this was resolved from a pair
-      resolvedFrom: resolution.type === 'pair' ? `${ticker} (pair)` : ticker
+      resolvedFrom: resolution.type === 'pair' ? `${ticker} (pair)` : ticker,
+      method: resolution.type === 'pair' ? 'pair-resolution' : 'canonical-or-search',
+      source: 'coingecko-rest'
     };
     
     // Cache the result

@@ -670,6 +670,8 @@ async function handlePriceCommand(message, tickersInput) {
   const reply = await message.reply('Fetching prices...');
   const tickers = tickersInput.split(/\s+/).slice(0, 6);
   const results = [];
+  let method = 'unknown';
+  let source = 'unknown';
   
   for (const ticker of tickers) {
     try {
@@ -677,6 +679,10 @@ async function handlePriceCommand(message, tickersInput) {
       const price = formatPrice(coinData.price);
       const change = coinData.change24h >= 0 ? `+${coinData.change24h.toFixed(2)}%` : `${coinData.change24h.toFixed(2)}%`;
       const changeEmoji = coinData.change24h >= 0 ? '📈' : '📉';
+      
+      // Capture method/source from first successful fetch
+      if (method === 'unknown' && coinData.method) method = coinData.method;
+      if (source === 'unknown' && coinData.source) source = coinData.source;
       
       let result = `**${ticker.toUpperCase()}** $${price} ${changeEmoji}${change}`;
       if (coinData.marketCap) {
@@ -706,7 +712,7 @@ async function handlePriceCommand(message, tickersInput) {
   
   // Add provenance footer
   const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
-  const provenance = `\n\n*Resolver: fixed-canonical | Source: coingecko-rest | v${shortVersion}*`;
+  const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
   
   await reply.edit(results.join('\n') + provenance);
 }
@@ -720,7 +726,8 @@ async function handleEnterCommand(message, ticker, side) {
   const reply = await message.reply(`Entering ${side} position on ${ticker.toUpperCase()}...`);
   
   try {
-    const price = await fetchUsdPrice(ticker);
+    const coinData = await fetchCoinData(ticker);
+    const price = coinData.price;
     const { competition_id } = await ensureCurrentWeek();
     const userId = await ensureUser(message.author.id, message.author.username);
     const entryId = await upsertEntry(competition_id, userId);
@@ -739,7 +746,13 @@ async function handleEnterCommand(message, ticker, side) {
       [entryId, ticker.toLowerCase(), side, price, new Date().toISOString(), '', 'open']
     );
 
-    await reply.edit(`**${side.toUpperCase()}** position entered on **${ticker.toUpperCase()}** at $${formatPrice(price)} (Trade #${rows[0].id})`);
+    // Add provenance footer
+    const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
+    const method = coinData.method || 'unknown';
+    const source = coinData.source || 'unknown';
+    const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
+
+    await reply.edit(`**${side.toUpperCase()}** position entered on **${ticker.toUpperCase()}** at $${formatPrice(price)} (Trade #${rows[0].id})` + provenance);
   } catch (err) {
     await reply.edit(`Failed to enter trade: ${err.message}`);
   }
@@ -749,7 +762,8 @@ async function handleExitCommand(message, ticker) {
   const reply = await message.reply(`Exiting position on ${ticker.toUpperCase()}...`);
   
   try {
-    const price = await fetchUsdPrice(ticker);
+    const coinData = await fetchCoinData(ticker);
+    const price = coinData.price;
     const { competition_id } = await ensureCurrentWeek();
     const userId = await ensureUser(message.author.id, message.author.username);
     const entryId = await upsertEntry(competition_id, userId);
@@ -777,8 +791,14 @@ async function handleExitCommand(message, ticker) {
       [price, new Date().toISOString(), pnlPct, t.id]
     );
 
+    // Add provenance footer
+    const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
+    const method = coinData.method || 'unknown';
+    const source = coinData.source || 'unknown';
+    const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
+
     const pnlColor = pnlPct >= 0 ? '🟢' : '🔴';
-    await reply.edit(`**${(t.side || 'long').toUpperCase()}** position closed on **${ticker.toUpperCase()}** at $${formatPrice(price)} ${pnlColor}${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
+    await reply.edit(`**${(t.side || 'long').toUpperCase()}** position closed on **${ticker.toUpperCase()}** at $${formatPrice(price)} ${pnlColor}${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%` + provenance);
   } catch (err) {
     await reply.edit(`Failed to exit trade: ${err.message}`);
   }
@@ -807,12 +827,20 @@ async function handlePositionsCommand(message, target) {
       }
 
       const positions = [];
+      let method = 'unknown';
+      let source = 'unknown';
+      
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         try {
-          const currentPrice = await fetchUsdPrice(r.ticker);
+          const coinData = await fetchCoinData(r.ticker);
+          const currentPrice = coinData.price;
           const entryPrice = Number(r.entry_price);
           const side = r.side || 'long';
+          
+          // Capture method/source from first successful fetch
+          if (method === 'unknown' && coinData.method) method = coinData.method;
+          if (source === 'unknown' && coinData.source) source = coinData.source;
           
           let pnlPct;
           if (side === 'long') {
@@ -846,7 +874,11 @@ async function handlePositionsCommand(message, target) {
         }
       }
       
-      await reply.edit(`**${message.author.username}'s Open Positions**\n${positions.join('\n')}\nTotal: ${rows.length} open positions • Live P&L`);
+      // Add provenance footer
+      const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
+      const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
+      
+      await reply.edit(`**${message.author.username}'s Open Positions**\n${positions.join('\n')}\nTotal: ${rows.length} open positions • Live P&L` + provenance);
     } else {
       // Handle "positions all" - show everyone's positions
       const allTrades = await query(`
@@ -864,15 +896,23 @@ async function handlePositionsCommand(message, target) {
       }
       
       const userPositions = {};
+      let method = 'unknown';
+      let source = 'unknown';
+      
       for (const trade of allTrades.rows) {
         if (!userPositions[trade.discord_username]) {
           userPositions[trade.discord_username] = [];
         }
         
         try {
-          const currentPrice = await fetchUsdPrice(trade.ticker);
+          const coinData = await fetchCoinData(trade.ticker);
+          const currentPrice = coinData.price;
           const entryPrice = Number(trade.entry_price);
           const side = trade.side || 'long';
+          
+          // Capture method/source from first successful fetch
+          if (method === 'unknown' && coinData.method) method = coinData.method;
+          if (source === 'unknown' && coinData.source) source = coinData.source;
           
           let pnlPct;
           if (side === 'long') {
@@ -908,7 +948,11 @@ async function handlePositionsCommand(message, target) {
         .map(([username, positions]) => `**${username}:**\n${positions.join('\n')}`)
         .join('\n\n');
       
-      await reply.edit(`**Everyone's Open Positions**\n\n${allPositionsText}`);
+      // Add provenance footer
+      const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
+      const provenance = `\n\n*Resolver: ${method} | Source: ${source} | v${shortVersion}*`;
+      
+      await reply.edit(`**Everyone's Open Positions**\n\n${allPositionsText}` + provenance);
     }
   } catch (err) {
     await reply.edit('Error loading positions. Try again later.');
