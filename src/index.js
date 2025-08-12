@@ -1,9 +1,19 @@
 import 'dotenv/config';
+import { assertSingleResolver } from './startup-asserts.js';
+import { version, startedAt } from './version.js';
+
+assertSingleResolver();
+console.log(`✅ bot starting version=${version} startedAt=${startedAt}`);
+
 import express from 'express';
 import { startDiscord } from './discord.js';
 import { scheduleDailyJob } from './sentiment.js';
+import { assertSingleInstance } from '../db/singleton.js';
 
 (async () => {
+  // Ensure single instance
+  await assertSingleInstance();
+  
   await startDiscord();
   scheduleDailyJob('0 14 * * *');
   const app = express();

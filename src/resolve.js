@@ -2,7 +2,7 @@
 import axios from "axios";
 
 /** Canonical map for top tickers (fast path) */
-export const CANONICAL = {
+const CANONICAL = {
   btc: "bitcoin",
   xbt: "bitcoin",
   eth: "ethereum",
@@ -244,3 +244,5 @@ export async function debugResolve(query) {
     };
   }
 }
+
+export { CANONICAL };

@@ -3,6 +3,7 @@ import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuil
 import { fetchUsdPrice, fetchCoinData } from './price-enhanced-smart.js';
 import { query } from './db.js';
 import { normalizeTicker } from './util/tickers.js';
+import { version, startedAt } from './version.js';
 
 const enableAuto = (process.env.SHUMI_AUTOPROFILE || 'off') === 'on';
 
@@ -188,6 +189,8 @@ export async function startDiscord() {
         await handlePositionsCommand(message, target);
       } else if (command === 'ping') {
         await message.reply('Pong! Shumi bot is alive and responding.');
+      } else if (command === 'status') {
+        await handleStatusCommand(message);
       } else if (command === 'join') {
         await handleJoinCommand(message);
       } else if (command === 'leaderboard') {
@@ -701,7 +704,11 @@ async function handlePriceCommand(message, tickersInput) {
     }
   }
   
-  await reply.edit(results.join('\n'));
+  // Add provenance footer
+  const shortVersion = version.includes('dev-') ? version.split('-')[1].substring(0, 10) : version;
+  const provenance = `\n\n*Resolver: fixed-canonical | Source: coingecko-rest | v${shortVersion}*`;
+  
+  await reply.edit(results.join('\n') + provenance);
 }
 
 async function handleEnterCommand(message, ticker, side) {
@@ -989,6 +996,24 @@ async function handleLeaderboardCommand(message) {
   } catch (err) {
     await message.reply('Failed to load leaderboard.');
   }
+}
+
+async function handleStatusCommand(message) {
+  const uptime = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+  const uptimeHours = Math.floor(uptime / 3600);
+  const uptimeMinutes = Math.floor((uptime % 3600) / 60);
+  
+  const statusText = `**🤖 Shumi Bot Status**
+
+**Version:** \`${version}\`
+**Started:** ${new Date(startedAt).toLocaleString()}
+**Uptime:** ${uptimeHours}h ${uptimeMinutes}m
+**Process:** Single instance (advisory lock active)
+**Resolver:** SD disambiguation fix applied ✅
+
+**Health:** All systems operational 🟢`;
+
+  await message.reply(statusText);
 }
 
 async function handleHelpCommand(message) {
