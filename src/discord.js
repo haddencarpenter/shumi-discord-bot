@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { fetchUsdPrice, fetchCoinData } from './price-enhanced-smart.js';
+import { parseInputTokens, getPricesWithFallback, formatPriceForDiscord } from './price-cg-service.js';
 import { query } from './db.js';
 import { normalizeTicker } from './util/tickers.js';
 import { version, shortVersion, startedAt } from './version.js';
@@ -1078,7 +1079,7 @@ async function handleHelpCommand(message) {
 • Rate limit: 5 actions per 30 seconds
 • Competition resets weekly (Monday 00:00 UTC)
 
-**Supported symbols:** Top 300 coins by market cap, updated daily`;
+**Supported symbols:** All coins available on CoinGecko (thousands of tokens)`;
 
   await message.reply(helpText);
 }
