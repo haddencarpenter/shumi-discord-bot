@@ -18,7 +18,7 @@ let batchTimer = null;
 /**
  * Get CoinGecko API configuration
  */
-function getCoinGeckoConfig() {
+export function getCoinGeckoConfig() {
   const apiKey = process.env.COINGECKO_API_KEY;
   
   if (apiKey) {

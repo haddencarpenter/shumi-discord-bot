@@ -1,6 +1,7 @@
 // Enhanced price-smart.js - Drop-in replacement with advanced resolver
 import axios from 'axios';
-import { resolveQuery, getCoinGeckoConfig } from './resolver-advanced.js';
+import { resolveCoinId as resolveQuery } from './resolve.js';
+import { getCoinGeckoConfig } from './cg-batcher.js';
 
 // Cache for search results (1 hour) and price data (1 minute)
 const searchCache = new Map();
