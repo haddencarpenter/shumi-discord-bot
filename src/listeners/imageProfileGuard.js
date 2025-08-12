@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
-import { fetchCoinData } from '../price-smart.js';
+import { fetchCoinData } from '../price-enhanced-smart.js';
 import { query } from '../db.js';
 
 const TICKER_RE = /\b([a-z]{2,10})(?:usdt|usd|perp)?\b/i;
