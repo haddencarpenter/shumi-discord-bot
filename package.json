@@ -7,12 +7,15 @@
   "scripts": {
     "start": "node src/index.js",
     "sentiment": "node src/sentiment.js",
+    "test:regression": "node scripts/test-regression.js",
+    "predeploy": "npm run test:regression",
     "migrate:up": "DATABASE_URL=\"${MIGRATOR_DATABASE_URL:-$DATABASE_URL}\" node-pg-migrate up --migrations-dir migrations --no-check-order",
     "migrate:down": "DATABASE_URL=\"${MIGRATOR_DATABASE_URL:-$DATABASE_URL}\" node-pg-migrate down --migrations-dir migrations",
     "migrate:create": "node-pg-migrate create --migrations-dir migrations",
     "db:backup": "mkdir -p backups && pg_dump \"$DATABASE_URL\" -Fc -f backups/shumi_$(date +%F_%H%M%S).dump && echo 'Backup created'",
     "db:sanity": "psql \"$DATABASE_URL\" -c \"select count(*) from pg_tables where schemaname='public';\"",
-    "prepare": "husky || true"
+    "prepare": "husky || true",
+    "test:ws:sd": "node src/tests/ws-only-sd.js"
   },
   "dependencies": {
     "axios": "^1.11.0",

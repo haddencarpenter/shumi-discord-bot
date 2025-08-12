@@ -39,6 +39,7 @@ export const CANONICAL = {
   syn: "synapse-2",  // Synapse protocol token
   multi: "multichain",  // Multichain (formerly Anyswap) token
   any: "anyswap",  // Old Anyswap token
+  sd: "stader",  // Stader token - fixes SD disambiguation issue
   // add more as you see fit
 };
 
