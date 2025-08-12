@@ -107,22 +107,34 @@ export async function fetchCoinData(ticker) {
     const q = encodeURIComponent(coinId);
     
     try {
-      const { data } = await axios.get(`${config.baseURL}/simple/price?ids=${q}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&precision=full`, { 
-        timeout: config.timeout,
-        headers: config.headers
-      });
+      // Get both price data and coin metadata in parallel
+      const [priceResponse, coinResponse] = await Promise.all([
+        axios.get(`${config.baseURL}/simple/price?ids=${q}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&precision=full`, { 
+          timeout: config.timeout,
+          headers: config.headers
+        }),
+        axios.get(`${config.baseURL}/coins/${coinId}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`, {
+          timeout: config.timeout,
+          headers: config.headers
+        })
+      ]);
       
-      if (!data[coinId] || data[coinId]?.usd == null) {
+      const priceData = priceResponse.data;
+      const coinData = coinResponse.data;
+      
+      if (!priceData[coinId] || priceData[coinId]?.usd == null) {
         console.error(JSON.stringify({ evt: 'cg_null', token: ticker, coinId, ts: Date.now() }));
         throw new Error(`price not found for ${ticker}`);
       }
     
-    const coin = data[coinId];
+    const coin = priceData[coinId];
     const result = {
       price: Number(coin.usd),
       change24h: Number(coin.usd_24h_change || 0),
       marketCap: coin.usd_market_cap ? Number(coin.usd_market_cap) : null,
       coinId: coinId, // Return the actual coin ID used
+      coinName: coinData.name || null, // Add coin name for disambiguation
+      symbol: coinData.symbol?.toUpperCase() || ticker.toUpperCase(), // Actual symbol from CoinGecko
       isPair: isPair, // Flag if this was resolved from a pair
       resolvedFrom: resolution.type === 'pair' ? `${ticker} (pair)` : ticker,
       method: resolution.type === 'pair' ? 'pair-resolution' : 'canonical-or-search',

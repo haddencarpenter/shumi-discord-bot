@@ -564,7 +564,12 @@ export async function startDiscord() {
             const change = coinData.change24h >= 0 ? `+${coinData.change24h.toFixed(2)}%` : `${coinData.change24h.toFixed(2)}%`;
             const changeEmoji = coinData.change24h >= 0 ? '📈' : '📉';
             
-            let result = `**${ticker.toUpperCase()}** $${price} ${changeEmoji} ${change}`;
+            // Format with coin name for disambiguation  
+            const displayName = coinData.coinName 
+              ? `**${ticker.toUpperCase()}** (${coinData.coinName})`
+              : `**${ticker.toUpperCase()}**`;
+            
+            let result = `${displayName} $${price} ${changeEmoji} ${change}`;
             
             if (coinData.marketCap) {
               const mcap = coinData.marketCap >= 1e9 
@@ -692,7 +697,12 @@ async function handlePriceCommand(message, tickersInput) {
       if (method === 'unknown' && coinData.method) method = coinData.method;
       if (source === 'unknown' && coinData.source) source = coinData.source;
       
-      let result = `**${ticker.toUpperCase()}** $${price} ${changeEmoji} ${change}`;
+      // Format with coin name for disambiguation
+      const displayName = coinData.coinName 
+        ? `**${ticker.toUpperCase()}** (${coinData.coinName})`
+        : `**${ticker.toUpperCase()}**`;
+      
+      let result = `${displayName} $${price} ${changeEmoji} ${change}`;
       if (coinData.marketCap) {
         const mcap = coinData.marketCap >= 1e9 
           ? `$${(coinData.marketCap / 1e9).toFixed(1)}B` 
