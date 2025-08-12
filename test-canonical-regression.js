@@ -7,6 +7,7 @@ import { resolveCoinId } from './src/resolve.js';
 // Critical tickers that MUST resolve to exact coinId via canonical mapping
 const mustBeCanonical = { 
   sd: 'stader',     // The core fix - SD must never drift back to USDS
+  bio: 'bio-protocol', // Bio Protocol - must not resolve to tiny mcap "bionergy"
   btc: 'bitcoin', 
   eth: 'ethereum',
   sol: 'solana',

@@ -40,6 +40,7 @@ const CANONICAL = {
   multi: "multichain",  // Multichain (formerly Anyswap) token
   any: "anyswap",  // Old Anyswap token
   sd: "stader",  // Stader token - fixes SD disambiguation issue
+  bio: "bio-protocol",  // Bio Protocol - fixes BIO disambiguation issue
   // add more as you see fit
 };
 

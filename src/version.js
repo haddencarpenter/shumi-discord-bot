@@ -7,10 +7,11 @@ try {
   version = gen.git;
   builtAt = gen.builtAt;
 } catch {
-  // Fallback to manual env vars or dev timestamp
+  // Fallback to Render's built-in env vars or dev timestamp
   version = process.env.RENDER_GIT_COMMIT?.slice(0, 7) ||
             process.env.GIT_SHA?.slice(0, 7) ||
             `dev-${new Date().toISOString()}`;
+  console.log('📝 Using fallback version:', version);
 }
 
 export { version };

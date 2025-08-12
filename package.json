@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "prestart": "node -e \"const {execSync}=require('node:child_process'); const fs=require('node:fs'); let v='dev'; try{v=execSync('git rev-parse --short HEAD').toString().trim()}catch{} fs.writeFileSync('src/version.generated.json', JSON.stringify({git:v,builtAt:new Date().toISOString()}))\"",
+    "prestart": "node -e \"const {execSync}=require('node:child_process'); const fs=require('node:fs'); let v='dev'; try{v=execSync('git rev-parse --short HEAD').toString().trim(); console.log('✅ Git hash:', v)}catch(e){console.log('❌ Git failed:', e.message)} try{fs.writeFileSync('src/version.generated.json', JSON.stringify({git:v,builtAt:new Date().toISOString()})); console.log('✅ Version file written:', v)}catch(e){console.log('❌ File write failed:', e.message)}\"",
     "start": "node src/index.js",
     "sentiment": "node src/sentiment.js",
     "test:regression": "node scripts/test-regression.js",
