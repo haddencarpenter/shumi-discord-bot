@@ -80,6 +80,14 @@ export async function fetchCoinData(ticker) {
       throw new Error(`Could not resolve ticker "${ticker}"`);
     }
     
+    // Debug trace for resolution
+    console.log(JSON.stringify({
+      evt: 'resolve_trace',
+      raw: ticker,
+      out: { coinId, method: resolution.type },
+      ts: Date.now()
+    }));
+    
     // Rate limit API calls
     await rateLimit();
     
@@ -87,14 +95,17 @@ export async function fetchCoinData(ticker) {
     const config = getCoinGeckoConfig();
     
     const q = encodeURIComponent(coinId);
-    const { data } = await axios.get(`${config.baseURL}/simple/price?ids=${q}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&precision=full`, { 
-      timeout: config.timeout,
-      headers: config.headers
-    });
     
-    if (!data[coinId] || data[coinId]?.usd == null) {
-      throw new Error(`price not found for ${ticker}`);
-    }
+    try {
+      const { data } = await axios.get(`${config.baseURL}/simple/price?ids=${q}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&precision=full`, { 
+        timeout: config.timeout,
+        headers: config.headers
+      });
+      
+      if (!data[coinId] || data[coinId]?.usd == null) {
+        console.error(JSON.stringify({ evt: 'cg_null', token: ticker, coinId, ts: Date.now() }));
+        throw new Error(`price not found for ${ticker}`);
+      }
     
     const coin = data[coinId];
     const result = {
@@ -127,6 +138,10 @@ export async function fetchCoinData(ticker) {
     });
     
     return result;
+    } catch (cgError) {
+      console.error(JSON.stringify({ evt: 'cg_error', token: ticker, msg: String(cgError), ts: Date.now() }));
+      throw cgError;
+    }
   } catch (error) {
     console.error(`Enhanced price fetch failed for ${ticker}:`, error.message);
     
