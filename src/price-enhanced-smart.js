@@ -56,7 +56,7 @@ export async function fetchCoinData(ticker) {
   if (priceCache.has(cacheKey)) {
     const cached = priceCache.get(cacheKey);
     if (now - cached.timestamp < PRICE_CACHE_DURATION) {
-      console.log(`💾 Cache hit: ${ticker}`);
+      console.log(`Cache hit: ${ticker}`);
       return cached.data;
     }
   }
@@ -72,10 +72,10 @@ export async function fetchCoinData(ticker) {
       // For pairs like "btcusdt", just get the base coin price
       coinId = resolution.baseId;
       isPair = true;
-      console.log(`🔄 Pair detected: ${ticker} → base coin: ${coinId}`);
+      console.log(`Pair detected: ${ticker} → base coin: ${coinId}`);
     } else if (resolution.type === 'coin') {
       coinId = resolution.id;
-      console.log(`✅ Resolved: ${ticker} → ${coinId}`);
+      console.log(`Resolved: ${ticker} → ${coinId}`);
     } else {
       throw new Error(`Could not resolve ticker "${ticker}"`);
     }
@@ -150,11 +150,11 @@ export async function fetchCoinData(ticker) {
       const stale = priceCache.get(cacheKey);
       const ageMinutes = Math.floor((now - stale.timestamp) / 60000);
       if (ageMinutes <= 5) {
-        console.log(`🗄️ Using stale cache for ${ticker} (${ageMinutes}m old)`);
+        console.log(`Using stale cache for ${ticker} (${ageMinutes}m old)`);
         // Add age info to the returned data so it can be displayed
         return { ...stale.data, isStale: true, ageMinutes };
       } else {
-        console.log(`⏰ Stale cache too old for ${ticker} (${ageMinutes}m), rejecting`);
+        console.log(`Stale cache too old for ${ticker} (${ageMinutes}m), rejecting`);
       }
     }
     

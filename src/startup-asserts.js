@@ -8,5 +8,5 @@ export function assertSingleResolver() {
     console.error('[FATAL] resolver-advanced is not shimming resolve.js');
     process.exit(1);
   }
-  console.log('✅ Single resolver verified (function identity check passed)');
+  console.log('Single resolver verified (function identity check passed)');
 }

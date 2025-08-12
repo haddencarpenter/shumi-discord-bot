@@ -3,16 +3,24 @@ import { assertSingleResolver } from './startup-asserts.js';
 import { version, startedAt } from './version.js';
 
 assertSingleResolver();
-console.log(`✅ bot starting version=${version} startedAt=${startedAt}`);
+console.log(`bot starting version=${version} startedAt=${startedAt}`);
 
 import express from 'express';
 import { startDiscord } from './discord.js';
 import { scheduleDailyJob } from './sentiment.js';
 import { assertSingleInstance } from '../db/singleton.js';
+import { buildSymbolIndex, scheduleIndexRefresh } from './symbol-index.js';
 
 (async () => {
   // Ensure single instance
   await assertSingleInstance();
+  
+  // Build symbol index from CoinGecko markets (top 300 coins)
+  console.log('Building symbol index...');
+  await buildSymbolIndex();
+  
+  // Schedule daily refresh of symbol index
+  scheduleIndexRefresh();
   
   await startDiscord();
   scheduleDailyJob('0 14 * * *');

@@ -1065,6 +1065,8 @@ async function handleStatusCommand(message) {
 async function handleHelpCommand(message) {
   const helpText = `**🍄 Shumi Trading Bot - Core Commands**
 
+**Pro Tip:** Use cashtags like \`$BTC $ETH $SOL\` for faster, more reliable results!
+
 **Competition:**
 \`shumi join\` - Join this week's trading competition
 \`shumi leaderboard\` - View weekly rankings
@@ -1077,7 +1079,8 @@ async function handleHelpCommand(message) {
 \`shumi positions all\` - View everyone's positions
 
 **Prices:**
-\`shumi price btc eth doge\` - Get current prices (up to 6 coins)
+\`shumi price $BTC $ETH $SOL\` - Get current prices (up to 6 coins)
+\`shumi price btc eth doge\` - Plain text also works
 
 **Other:**
 \`shumi ping\` - Test if bot is responsive
@@ -1087,7 +1090,9 @@ async function handleHelpCommand(message) {
 • One position per ticker (no averaging)
 • Shorts profit when prices fall
 • Rate limit: 5 actions per 30 seconds
-• Competition resets weekly (Monday 00:00 UTC)`;
+• Competition resets weekly (Monday 00:00 UTC)
+
+**Supported symbols:** Top 300 coins by market cap, updated daily`;
 
   await message.reply(helpText);
 }

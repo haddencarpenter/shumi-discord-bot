@@ -260,7 +260,7 @@ export async function loadCache(verbose = false) {
   );
   
   const successful = results.filter(r => r.status === 'fulfilled' && r.value.id).length;
-  if (verbose) console.log(`✅ Resolver cache warmed: ${successful}/${commonTickers.length} tickers`);
+  if (verbose) console.log(`Resolver cache warmed: ${successful}/${commonTickers.length} tickers`);
   
   return successful;
 }
