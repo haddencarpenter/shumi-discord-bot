@@ -655,7 +655,8 @@ export async function startDiscord() {
             }
             
             userUnrealizedPnl[pos.discord_username].push(pnlPct);
-            userPositions[pos.discord_username].push(`${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`);
+            const sideSymbol = (pos.side === 'short') ? 'S' : 'L';
+            userPositions[pos.discord_username].push(`${sideSymbol} ${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
           }
         }
         
@@ -682,7 +683,7 @@ export async function startDiscord() {
             })
             .sort((a, b) => b.totalPnl - a.totalPnl)
             .map((r, idx) => {
-              const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(1)}%`;
+              const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(2)}%`;
               return `${idx+1}. **${r.username}**: ${r.positions}${totalText}`;
             });
           
@@ -1116,7 +1117,8 @@ async function handleLeaderboardCommand(message) {
         }
         
         userUnrealizedPnl[pos.discord_username].push(pnlPct);
-        userPositions[pos.discord_username].push(`${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`);
+        const sideSymbol = (pos.side === 'short') ? 'S' : 'L';
+        userPositions[pos.discord_username].push(`${sideSymbol} ${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
       }
     }
     
@@ -1161,7 +1163,7 @@ async function handleLeaderboardCommand(message) {
         })
         .sort((a, b) => b.totalPnl - a.totalPnl)
         .map((r, idx) => {
-          const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(1)}%`;
+          const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(2)}%`;
           return `${idx+1}. **${r.username}**: ${r.positions}${totalText}`;
         });
       
