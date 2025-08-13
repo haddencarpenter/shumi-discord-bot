@@ -642,12 +642,12 @@ export async function startDiscord() {
           
           // Import batch price fetcher
           const { getPrices } = await import('./cg-batcher.js');
-          const { getCoinIdByTicker } = await import('./symbol-index.js');
+          const { resolveSymbolToId } = await import('./symbol-index.js');
           
           // Resolve all tickers to coin IDs in parallel
           const resolvePromises = uniqueTickers.map(async ticker => {
             try {
-              const coinId = getCoinIdByTicker(ticker);
+              const coinId = resolveSymbolToId(ticker);
               return { ticker, coinId };
             } catch (err) {
               console.error(`Failed to resolve ${ticker}:`, err.message);
@@ -656,13 +656,13 @@ export async function startDiscord() {
           });
           
           const resolvedTickers = await Promise.all(resolvePromises);
-          const coinIdToTicker = {};
+          const tickerToCoinId = {};
           const validCoinIds = [];
           
-          // Build mapping and valid coin IDs list
+          // Build mapping
           resolvedTickers.forEach(r => {
             if (r.coinId) {
-              coinIdToTicker[r.coinId] = r.ticker;
+              tickerToCoinId[r.ticker] = r.coinId;
               validCoinIds.push(r.coinId);
             }
           });
@@ -672,7 +672,8 @@ export async function startDiscord() {
           
           // Map prices back to tickers
           validCoinIds.forEach((coinId, index) => {
-            const ticker = coinIdToTicker[coinId];
+            // Find which ticker this coinId belongs to
+            const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
             if (ticker && prices[index]) {
               tickerPrices[ticker] = prices[index].price;
             } else if (ticker) {
@@ -1100,10 +1101,8 @@ async function handleJoinCommand(message) {
 
 async function handleLeaderboardCommand(message) {
   try {
-    console.log('[LEADERBOARD] Starting leaderboard command');
     const reply = await message.reply('Loading leaderboard...');
     const { competition_id } = await ensureCurrentWeek();
-    console.log('[LEADERBOARD] Competition ID:', competition_id);
     
     // Get closed trades leaderboard
     const { rows: closedRows } = await query(
@@ -1146,21 +1145,18 @@ async function handleLeaderboardCommand(message) {
     });
     
     if (openPositions.length > 0) {
-      console.log('[LEADERBOARD] Processing', openPositions.length, 'open positions');
       // Get unique tickers and batch resolve to coin IDs
       const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
-      console.log('[LEADERBOARD] Unique tickers:', uniqueTickers);
       const tickerPrices = {};
       
       // Import batch price fetcher
       const { getPrices } = await import('./cg-batcher.js');
-      const { getCoinIdByTicker } = await import('./symbol-index.js');
-      console.log('[LEADERBOARD] Modules imported');
+      const { resolveSymbolToId } = await import('./symbol-index.js');
       
       // Resolve all tickers to coin IDs in parallel
       const resolvePromises = uniqueTickers.map(async ticker => {
         try {
-          const coinId = getCoinIdByTicker(ticker);
+          const coinId = resolveSymbolToId(ticker);
           return { ticker, coinId };
         } catch (err) {
           console.error(`Failed to resolve ${ticker}:`, err.message);
@@ -1169,13 +1165,13 @@ async function handleLeaderboardCommand(message) {
       });
       
       const resolvedTickers = await Promise.all(resolvePromises);
-      const coinIdToTicker = {};
+      const tickerToCoinId = {};
       const validCoinIds = [];
       
-      // Build mapping and valid coin IDs list
+      // Build mapping
       resolvedTickers.forEach(r => {
         if (r.coinId) {
-          coinIdToTicker[r.coinId] = r.ticker;
+          tickerToCoinId[r.ticker] = r.coinId;
           validCoinIds.push(r.coinId);
         }
       });
@@ -1185,7 +1181,8 @@ async function handleLeaderboardCommand(message) {
       
       // Map prices back to tickers
       validCoinIds.forEach((coinId, index) => {
-        const ticker = coinIdToTicker[coinId];
+        // Find which ticker this coinId belongs to
+        const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
         if (ticker && prices[index]) {
           tickerPrices[ticker] = prices[index].price;
         } else if (ticker) {
