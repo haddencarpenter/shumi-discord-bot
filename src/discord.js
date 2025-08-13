@@ -817,7 +817,175 @@ async function handlePriceCommand(message, tickersInput) {
   let method = 'unknown';
   let source = 'unknown';
   
-  for (const ticker of tickers) {
+  // Batch fetch all prices at once for efficiency
+  if (tickers.length > 1) {
+    try {
+      // Use the existing batching system for maximum API efficiency
+      const { getPrices } = await import('./cg-batcher.js');
+      
+      // First, resolve tickers to coin IDs using the existing resolver
+      const resolvePromises = tickers.map(async ticker => {
+        try {
+          const { resolveCoinId } = await import('./resolve.js');
+          const coinId = await resolveCoinId(ticker);
+          return { ticker, coinId };
+        } catch (err) {
+          console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
+          return { ticker, coinId: null };
+        }
+      });
+      
+      const resolvedTickers = await Promise.all(resolvePromises);
+      const tickerToCoinId = {};
+      const validCoinIds = [];
+      
+      // Build mapping of ticker -> coinId
+      resolvedTickers.forEach(r => {
+        if (r.coinId) {
+          tickerToCoinId[r.ticker] = r.coinId;
+          validCoinIds.push(r.coinId);
+        }
+      });
+      
+      // Use the batching system to fetch all prices in minimal API calls
+      const prices = await getPrices(validCoinIds);
+      
+      // Map prices back to tickers and fetch additional data
+      const tickerData = {};
+      validCoinIds.forEach((coinId, index) => {
+        const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
+        if (ticker && prices[index]) {
+          tickerData[ticker] = { price: prices[index].price };
+        }
+      });
+      
+      // Fetch additional data (24h change, market cap) for resolved tickers
+      for (const ticker of tickers) {
+        if (tickerData[ticker]) {
+          try {
+            const coinData = await fetchCoinData(ticker);
+            tickerData[ticker] = { ...tickerData[ticker], ...coinData };
+            method = coinData.method || 'batch';
+            source = coinData.source || 'coingecko-batch';
+          } catch (err) {
+            console.log(`[DEBUG] Failed to fetch additional data for ${ticker}:`, err.message);
+          }
+        }
+      }
+      
+      // Build results from batch data
+      for (const ticker of tickers) {
+        if (tickerData[ticker] && tickerData[ticker].price) {
+          const data = tickerData[ticker];
+          const price = formatPrice(data.price);
+          const change = data.change24h >= 0 ? `+${data.change24h.toFixed(2)}%` : `${data.change24h.toFixed(2)}%`;
+          const changeEmoji = data.change24h >= 0 ? '📈' : '📉';
+          
+          // Format with coin name for disambiguation
+          const displayName = data.coinName 
+            ? `**${ticker.toUpperCase()}** (${data.coinName})`
+            : `**${ticker.toUpperCase()}**`;
+          
+          let result = `${displayName} $${price} ${changeEmoji} ${change}`;
+          if (data.marketCap) {
+            const mcap = data.marketCap >= 1e9 
+              ? `$${(data.marketCap / 1e9).toFixed(1)}B` 
+              : `$${(data.marketCap / 1e6).toFixed(0)}M`;
+            result += ` • ${mcap}`;
+          }
+          
+          // Show if data is stale
+          if (data.isStale) {
+            result += ` ⏰${data.ageMinutes}m old`;
+          }
+          
+          results.push(result);
+        } else {
+          // Fallback to individual fetch for failed tickers
+          try {
+            const coinData = await fetchCoinData(ticker);
+            const price = formatPrice(coinData.price);
+            const change = coinData.change24h >= 0 ? `+${coinData.change24h.toFixed(2)}%` : `${coinData.change24h.toFixed(2)}%`;
+            const changeEmoji = coinData.change24h >= 0 ? '📈' : '📉';
+            
+            // Format with coin name for disambiguation
+            const displayName = coinData.coinName 
+              ? `**${ticker.toUpperCase()}** (${coinData.coinName})`
+              : `**${ticker.toUpperCase()}**`;
+            
+            let result = `${displayName} $${price} ${changeEmoji} ${change}`;
+            if (coinData.marketCap) {
+              const mcap = coinData.marketCap >= 1e9 
+                ? `$${(coinData.marketCap / 1e9).toFixed(1)}B` 
+                : `$${(coinData.marketCap / 1e6).toFixed(0)}M`;
+              result += ` • ${mcap}`;
+            }
+            
+            // Show if data is stale
+            if (coinData.isStale) {
+              result += ` ⏰${coinData.ageMinutes}m old`;
+            }
+            
+            results.push(result);
+            method = coinData.method || 'individual';
+            source = coinData.source || 'coingecko';
+          } catch (err) {
+            if (err.message.includes('429') || err.message.includes('rate limit')) {
+              results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+            } else {
+              results.push(`**${ticker.toUpperCase()}** not found`);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.log('[DEBUG] Batch price fetch failed, falling back to individual calls:', err.message);
+      // Fallback to original individual approach
+      for (const ticker of tickers) {
+        try {
+          const coinData = await fetchCoinData(ticker);
+          const price = formatPrice(coinData.price);
+          const change = coinData.change24h >= 0 ? `+${coinData.change24h.toFixed(2)}%` : `${coinData.change24h.toFixed(2)}%`;
+          const changeEmoji = coinData.change24h >= 0 ? '📈' : '📉';
+          
+          // Capture method/source from first successful fetch
+          if (method === 'unknown' && coinData.method) method = coinData.method;
+          if (source === 'unknown' && coinData.source) source = coinData.source;
+          
+          // Format with coin name for disambiguation
+          const displayName = coinData.coinName 
+            ? `**${ticker.toUpperCase()}** (${coinData.coinName})`
+            : `**${ticker.toUpperCase()}**`;
+          
+          let result = `${displayName} $${price} ${changeEmoji} ${change}`;
+          if (coinData.marketCap) {
+            const mcap = coinData.marketCap >= 1e9 
+              ? `$${(coinData.marketCap / 1e9).toFixed(1)}B` 
+              : `$${(coinData.marketCap / 1e6).toFixed(0)}M`;
+            result += ` • ${mcap}`;
+          }
+          
+          // Show if data is stale
+          if (coinData.isStale) {
+            result += ` ⏰${coinData.ageMinutes}m old`;
+          }
+          
+          results.push(result);
+        } catch (err) {
+          if (err.message.includes('429') || err.message.includes('rate limit')) {
+            results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+          } else {
+            results.push(`**${ticker.toUpperCase()}** not found`);
+          }
+        }
+        if (tickers.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+    }
+  } else {
+    // Single ticker - use individual fetch
+    const ticker = tickers[0];
     try {
       const coinData = await fetchCoinData(ticker);
       const price = formatPrice(coinData.price);
@@ -853,9 +1021,6 @@ async function handlePriceCommand(message, tickersInput) {
       } else {
         results.push(`**${ticker.toUpperCase()}** not found`);
       }
-    }
-    if (tickers.length > 1) {
-      await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
   
@@ -962,21 +1127,76 @@ async function handlePositionsCommand(message, target) {
         return;
       }
 
+      // Batch fetch all prices at once for efficiency
+      const uniqueTickers = [...new Set(rows.map(r => r.ticker))];
+      const tickerPrices = {};
+      
+      if (uniqueTickers.length > 0) {
+        try {
+          // Use the existing batching system for maximum API efficiency
+          const { getPrices } = await import('./cg-batcher.js');
+          
+          // First, resolve tickers to coin IDs using the existing resolver
+          const resolvePromises = uniqueTickers.map(async ticker => {
+            try {
+              const { resolveCoinId } = await import('./resolve.js');
+              const coinId = await resolveCoinId(ticker);
+              return { ticker, coinId };
+            } catch (err) {
+              console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
+              return { ticker, coinId: null };
+            }
+          });
+          
+          const resolvedTickers = await Promise.all(resolvePromises);
+          const tickerToCoinId = {};
+          const validCoinIds = [];
+          
+          // Build mapping of ticker -> coinId
+          resolvedTickers.forEach(r => {
+            if (r.coinId) {
+              tickerToCoinId[r.ticker] = r.coinId;
+              validCoinIds.push(r.coinId);
+            }
+          });
+          
+          // Use the batching system to fetch all prices in minimal API calls
+          const prices = await getPrices(validCoinIds);
+          
+          // Map prices back to tickers
+          validCoinIds.forEach((coinId, index) => {
+            const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
+            if (ticker && prices[index]) {
+              tickerPrices[ticker] = prices[index].price;
+            }
+          });
+        } catch (err) {
+          console.log('[DEBUG] Batch price fetch failed, falling back to individual calls:', err.message);
+        }
+      }
+      
       const positions = [];
       let method = 'unknown';
       let source = 'unknown';
       
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
+      for (const r of rows) {
         try {
-          const coinData = await fetchCoinData(r.ticker);
-          const currentPrice = coinData.price;
+          let currentPrice;
+          
+          // Try batch price first, fallback to individual fetch
+          if (tickerPrices[r.ticker]) {
+            currentPrice = tickerPrices[r.ticker];
+            method = 'batch';
+            source = 'coingecko-batch';
+          } else {
+            const coinData = await fetchCoinData(r.ticker);
+            currentPrice = coinData.price;
+            method = coinData.method || 'individual';
+            source = coinData.source || 'coingecko';
+          }
+          
           const entryPrice = Number(r.entry_price);
           const side = r.side || 'long';
-          
-          // Capture method/source from first successful fetch
-          if (method === 'unknown' && coinData.method) method = coinData.method;
-          if (source === 'unknown' && coinData.source) source = coinData.source;
           
           let pnlPct;
           if (side === 'long') {
@@ -1004,10 +1224,6 @@ async function handlePositionsCommand(message, target) {
           const sideSymbol = (r.side || 'long') === 'long' ? 'L' : 'S';
           positions.push(`${sideSymbol} **${r.ticker.toUpperCase()}** $${formatPrice(Number(r.entry_price))} ⏳`);
         }
-        
-        if (i < rows.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
       }
       
       // Clean positions display
@@ -1028,6 +1244,54 @@ async function handlePositionsCommand(message, target) {
         return;
       }
       
+      // Batch fetch all prices at once for efficiency
+      const uniqueTickers = [...new Set(allTrades.rows.map(t => t.ticker))];
+      const tickerPrices = {};
+      
+      if (uniqueTickers.length > 0) {
+        try {
+          // Use the existing batching system for maximum API efficiency
+          const { getPrices } = await import('./cg-batcher.js');
+          
+          // First, resolve tickers to coin IDs using the existing resolver
+          const resolvePromises = uniqueTickers.map(async ticker => {
+            try {
+              const { resolveCoinId } = await import('./resolve.js');
+              const coinId = await resolveCoinId(ticker);
+              return { ticker, coinId };
+            } catch (err) {
+              console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
+              return { ticker, coinId: null };
+            }
+          });
+          
+          const resolvedTickers = await Promise.all(resolvePromises);
+          const tickerToCoinId = {};
+          const validCoinIds = [];
+          
+          // Build mapping of ticker -> coinId
+          resolvedTickers.forEach(r => {
+            if (r.coinId) {
+              tickerToCoinId[r.ticker] = r.coinId;
+              validCoinIds.push(r.coinId);
+            }
+          });
+          
+          // Use the batching system to fetch all prices in minimal API calls
+          const prices = await getPrices(validCoinIds);
+          
+          // Map prices back to tickers
+          validCoinIds.forEach((coinId, index) => {
+            const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
+            if (ticker && prices[index]) {
+              tickerPrices[ticker] = prices[index].price;
+            }
+          });
+        } catch (err) {
+          console.log('[DEBUG] Batch price fetch failed, falling back to individual calls:', err.message);
+        }
+      }
+      
       const userPositions = {};
       let method = 'unknown';
       let source = 'unknown';
@@ -1038,14 +1302,22 @@ async function handlePositionsCommand(message, target) {
         }
         
         try {
-          const coinData = await fetchCoinData(trade.ticker);
-          const currentPrice = coinData.price;
+          let currentPrice;
+          
+          // Try batch price first, fallback to individual fetch
+          if (tickerPrices[trade.ticker]) {
+            currentPrice = tickerPrices[trade.ticker];
+            method = 'batch';
+            source = 'coingecko-batch';
+          } else {
+            const coinData = await fetchCoinData(trade.ticker);
+            currentPrice = coinData.price;
+            method = coinData.method || 'individual';
+            source = coinData.source || 'coingecko';
+          }
+          
           const entryPrice = Number(trade.entry_price);
           const side = trade.side || 'long';
-          
-          // Capture method/source from first successful fetch
-          if (method === 'unknown' && coinData.method) method = coinData.method;
-          if (source === 'unknown' && coinData.source) source = coinData.source;
           
           let pnlPct;
           if (side === 'long') {
@@ -1073,8 +1345,6 @@ async function handlePositionsCommand(message, target) {
           const sideSymbol = (trade.side || 'long') === 'long' ? 'L' : 'S';
           userPositions[trade.discord_username].push(`${sideSymbol} **${trade.ticker.toUpperCase()}** $${formatPrice(Number(trade.entry_price))} ⏳`);
         }
-        
-        await new Promise(resolve => setTimeout(resolve, 200));
       }
       
       const allPositionsText = Object.entries(userPositions)
