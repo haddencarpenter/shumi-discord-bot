@@ -130,6 +130,44 @@ function scoreCandidate(q, c) {
   return score;
 }
 
+// Rate limiting for CoinGecko API calls
+let lastApiCall = 0;
+const MIN_INTERVAL_MS = 1200; // 1.2 seconds between calls (respects rate limits)
+
+async function rateLimitedApiCall(url) {
+  const now = Date.now();
+  const timeSince = now - lastApiCall;
+  
+  if (timeSince < MIN_INTERVAL_MS) {
+    const waitTime = MIN_INTERVAL_MS - timeSince;
+    console.log(`[RATE_LIMIT] Waiting ${waitTime}ms before next API call`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
+  lastApiCall = Date.now();
+  
+  try {
+    const response = await fetch(url);
+    
+    if (response.status === 429) {
+      // Rate limited - wait longer and retry
+      const retryDelay = 5000; // 5 seconds
+      console.log(`[RATE_LIMIT] 429 received, waiting ${retryDelay}ms before retry`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      return await fetch(url); // Retry once
+    }
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error(`[API_ERROR] ${url}:`, error.message);
+    throw error;
+  }
+}
+
 /** Resolve a single query (ticker or name) to a CoinGecko ID */
 export async function resolveCoinId(query) {
   const q = String(query).trim().toLowerCase();
@@ -141,12 +179,10 @@ export async function resolveCoinId(query) {
   if (q === "weth" || q === "wbtc" || q === "steth") return q;
 
   try {
-    // Search CoinGecko
-    const { data } = await axios.get("https://api.coingecko.com/api/v3/search", {
-      params: { query: q },
-      headers: { "User-Agent": "shumi-bot/1.0" },
-      timeout: 5000,
-    });
+    // Search CoinGecko with rate limiting
+    const searchUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(q)}`;
+    const response = await rateLimitedApiCall(searchUrl);
+    const data = await response.json();
 
     const coins = (data?.coins || [])
       .map(c => ({
@@ -207,11 +243,9 @@ export async function debugResolve(query) {
   }
   
   try {
-    const { data } = await axios.get("https://api.coingecko.com/api/v3/search", {
-      params: { query: q },
-      headers: { "User-Agent": "shumi-bot/1.0" },
-      timeout: 5000,
-    });
+    const searchUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(q)}`;
+    const response = await rateLimitedApiCall(searchUrl);
+    const data = await response.json();
     
     const allCandidates = (data?.coins || []).slice(0, 10).map(c => ({
       id: c.id,

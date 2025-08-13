@@ -644,8 +644,14 @@ export async function startDiscord() {
           const { getPrices } = await import('./cg-batcher.js');
           
           // First, resolve tickers to coin IDs using the existing resolver
-          const resolvePromises = uniqueTickers.map(async ticker => {
+          // Add delay between resolutions to respect rate limits
+          const resolvePromises = uniqueTickers.map(async (ticker, index) => {
             try {
+              // Add delay between resolutions to respect rate limits
+              if (index > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1200)); // 1.2 second delay
+              }
+              
               // Use the existing resolveCoinId function from resolve.js
               const { resolveCoinId } = await import('./resolve.js');
               const coinId = await resolveCoinId(ticker);
