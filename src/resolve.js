@@ -132,7 +132,7 @@ function scoreCandidate(q, c) {
 
 // Rate limiting for CoinGecko API calls
 let lastApiCall = 0;
-const MIN_INTERVAL_MS = 1200; // 1.2 seconds between calls (respects rate limits)
+const MIN_INTERVAL_MS = 2000; // 2 seconds between calls (more conservative)
 
 async function rateLimitedApiCall(url) {
   const now = Date.now();
@@ -151,7 +151,7 @@ async function rateLimitedApiCall(url) {
     
     if (response.status === 429) {
       // Rate limited - wait longer and retry
-      const retryDelay = 5000; // 5 seconds
+      const retryDelay = 8000; // 8 seconds (increased)
       console.log(`[RATE_LIMIT] 429 received, waiting ${retryDelay}ms before retry`);
       await new Promise(resolve => setTimeout(resolve, retryDelay));
       return await fetch(url); // Retry once
@@ -161,7 +161,20 @@ async function rateLimitedApiCall(url) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
-    return response;
+    // Check if response is "Throttled" text instead of JSON
+    const responseText = await response.text();
+    if (responseText.trim() === 'Throttled') {
+      console.log(`[RATE_LIMIT] Received "Throttled" response, waiting 10s`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      throw new Error('Rate limited - received "Throttled" response');
+    }
+    
+    // Create a new response object with the text
+    return {
+      ok: true,
+      status: response.status,
+      json: async () => JSON.parse(responseText)
+    };
   } catch (error) {
     console.error(`[API_ERROR] ${url}:`, error.message);
     throw error;

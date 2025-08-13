@@ -643,26 +643,48 @@ export async function startDiscord() {
           // Import batch price fetcher and use existing resolver
           const { getPrices } = await import('./cg-batcher.js');
           
-          // First, resolve tickers to coin IDs using the existing resolver
-          // Add delay between resolutions to respect rate limits
-          const resolvePromises = uniqueTickers.map(async (ticker, index) => {
-            try {
-              // Add delay between resolutions to respect rate limits
-              if (index > 0) {
-                await new Promise(resolve => setTimeout(resolve, 1200)); // 1.2 second delay
-              }
-              
-              // Use the existing resolveCoinId function from resolve.js
-              const { resolveCoinId } = await import('./resolve.js');
-              const coinId = await resolveCoinId(ticker);
-              return { ticker, coinId };
-            } catch (err) {
-              console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
-              return { ticker, coinId: null };
-            }
-          });
+          // Use hybrid approach: Symbol index first, minimal API fallback
+          const resolvedTickers = [];
+          const { resolveSymbolToId } = await import('./symbol-index.js');
+          const { resolveCoinId } = await import('./resolve.js');
           
-          const resolvedTickers = await Promise.all(resolvePromises);
+          // Phase 1: Resolve using symbol index (instant, no API calls)
+          for (const ticker of uniqueTickers) {
+            const indexResult = resolveSymbolToId(ticker);
+            if (indexResult) {
+              resolvedTickers.push({ ticker, coinId: indexResult.coinId });
+              console.log(`[DEBUG] Index resolved ${ticker} → ${indexResult.coinId}`);
+            } else {
+              resolvedTickers.push({ ticker, coinId: null });
+              console.log(`[DEBUG] ${ticker} not in symbol index (top 300), skipping API resolution for leaderboard`);
+            }
+          }
+          
+          // Phase 2: For critical failures only, use API (but limit to top 5 missing)
+          const unresolved = resolvedTickers.filter(r => !r.coinId).slice(0, 5); // Limit API calls
+          if (unresolved.length > 0) {
+            console.log(`[DEBUG] Attempting API resolution for ${unresolved.length} critical tickers...`);
+            for (let i = 0; i < unresolved.length; i++) {
+              const tickerData = unresolved[i];
+              try {
+                if (i > 0) {
+                  await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+                }
+                
+                const coinId = await resolveCoinId(tickerData.ticker);
+                if (coinId) {
+                  // Update in resolvedTickers array
+                  const tickerIndex = resolvedTickers.findIndex(r => r.ticker === tickerData.ticker);
+                  if (tickerIndex !== -1) {
+                    resolvedTickers[tickerIndex].coinId = coinId;
+                    console.log(`[DEBUG] API resolved ${tickerData.ticker} → ${coinId}`);
+                  }
+                }
+              } catch (err) {
+                console.log(`[DEBUG] API resolution failed for ${tickerData.ticker}:`, err.message);
+              }
+            }
+          }
           const tickerToCoinId = {};
           const validCoinIds = [];
           
@@ -1542,10 +1564,10 @@ async function handleLeaderboardCommand(message) {
           console.log(`[DEBUG] Score line for ${username}:`, userPositions[username].join(' | ') + totalText);
           return `${idx+1}. **${username}**: ${userPositions[username].join(' | ')}${totalText}`;
         } else {
-          // Fallback to simple position count
+          // Fallback to simple position count with explanation
           const count = userFallbackCounts[username];
-          console.log(`[DEBUG] Fallback line for ${username}:`, `${count} position${count > 1 ? 's' : ''}`);
-          return `${idx+1}. **${username}**: ${count} position${count > 1 ? 's' : ''}`;
+          console.log(`[DEBUG] Fallback line for ${username}:`, `${count} position${count > 1 ? 's' : ''} (prices loading)`);
+          return `${idx+1}. **${username}**: ${count} position${count > 1 ? 's' : ''} (prices loading...)`;
         }
       });
       
@@ -1557,7 +1579,7 @@ async function handleLeaderboardCommand(message) {
       return;
     }
     
-    response += `Close trades to appear in rankings • Live P&L + duration bonus in \`shumi positions\`\n* = duration bonus applied`;
+    response += `Close trades to appear in rankings • Live P&L + duration bonus in \`shumi positions\`\n* = duration bonus applied • Only top 300 coins shown for performance`;
     await reply.edit(response);
   } catch (err) {
     console.error('Leaderboard error:', err);
