@@ -623,15 +623,15 @@ export async function startDiscord() {
           const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
           const tickerPrices = {};
           
-          // Import resolver and batch price fetcher
-          const { resolveTicker } = await import('./resolver-advanced.js');
+          // Import batch price fetcher
           const { getPrices } = await import('./cg-batcher.js');
+          const { getCoinIdByTicker } = await import('./symbol-index.js');
           
           // Resolve all tickers to coin IDs in parallel
           const resolvePromises = uniqueTickers.map(async ticker => {
             try {
-              const resolved = await resolveTicker(ticker);
-              return { ticker, coinId: resolved.coinId };
+              const coinId = getCoinIdByTicker(ticker);
+              return { ticker, coinId };
             } catch (err) {
               console.error(`Failed to resolve ${ticker}:`, err.message);
               return { ticker, coinId: null };
@@ -1084,8 +1084,10 @@ async function handleJoinCommand(message) {
 
 async function handleLeaderboardCommand(message) {
   try {
+    console.log('[LEADERBOARD] Starting leaderboard command');
     const reply = await message.reply('Loading leaderboard...');
     const { competition_id } = await ensureCurrentWeek();
+    console.log('[LEADERBOARD] Competition ID:', competition_id);
     
     // Get closed trades leaderboard
     const { rows: closedRows } = await query(
@@ -1111,19 +1113,22 @@ async function handleLeaderboardCommand(message) {
     const userPositions = {};
     
     if (openPositions.length > 0) {
+      console.log('[LEADERBOARD] Processing', openPositions.length, 'open positions');
       // Get unique tickers and batch resolve to coin IDs
       const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
+      console.log('[LEADERBOARD] Unique tickers:', uniqueTickers);
       const tickerPrices = {};
       
-      // Import resolver and batch price fetcher
-      const { resolveTicker } = await import('./resolver-advanced.js');
+      // Import batch price fetcher
       const { getPrices } = await import('./cg-batcher.js');
+      const { getCoinIdByTicker } = await import('./symbol-index.js');
+      console.log('[LEADERBOARD] Modules imported');
       
       // Resolve all tickers to coin IDs in parallel
       const resolvePromises = uniqueTickers.map(async ticker => {
         try {
-          const resolved = await resolveTicker(ticker);
-          return { ticker, coinId: resolved.coinId };
+          const coinId = getCoinIdByTicker(ticker);
+          return { ticker, coinId };
         } catch (err) {
           console.error(`Failed to resolve ${ticker}:`, err.message);
           return { ticker, coinId: null };
@@ -1238,7 +1243,8 @@ async function handleLeaderboardCommand(message) {
     response += `Close trades to appear in rankings • Live P&L in \`shumi positions\``;
     await reply.edit(response);
   } catch (err) {
-    await message.reply('Failed to load leaderboard.');
+    console.error('Leaderboard error:', err);
+    await reply.edit('Failed to load leaderboard.');
   }
 }
 
