@@ -640,20 +640,18 @@ export async function startDiscord() {
           const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
           const tickerPrices = {};
           
-          // Import batch price fetcher and enhanced resolver
+          // Import batch price fetcher and use existing resolver
           const { getPrices } = await import('./cg-batcher.js');
-          const { getResolver } = await import('./price-enhanced-smart.js');
           
-          // Use the same resolver logic as positions command but extract just coin IDs
+          // First, resolve tickers to coin IDs using the existing resolver
           const resolvePromises = uniqueTickers.map(async ticker => {
             try {
-              // Use the resolver from price-enhanced-smart.js
-              const resolver = getResolver();
-              const resolved = await resolver(ticker);
-              const coinId = resolved?.coinId || null;
+              // Use the existing resolveCoinId function from resolve.js
+              const { resolveCoinId } = await import('./resolve.js');
+              const coinId = await resolveCoinId(ticker);
               return { ticker, coinId };
             } catch (err) {
-              console.error(`Failed to resolve ${ticker}:`, err.message);
+              console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
               return { ticker, coinId: null };
             }
           });
@@ -684,14 +682,18 @@ export async function startDiscord() {
             }
           });
           
-          // Calculate P&L for each position
+          // Calculate P&L and duration bonus for each position
           for (const pos of openPositions) {
             const currentPrice = tickerPrices[pos.ticker];
-            if (!currentPrice) continue;
+            if (!currentPrice) {
+              console.log(`[DEBUG] No price for ${pos.ticker}, skipping position`);
+              continue;
+            }
             
             const entryPrice = Number(pos.entry_price);
             const side = pos.side || 'long';
             
+            // Calculate P&L
             let pnlPct;
             if (side === 'long') {
               pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
@@ -699,15 +701,25 @@ export async function startDiscord() {
               pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
             }
             
+            // Calculate duration bonus (1% per day, max 7%)
+            const entryTime = new Date(pos.entry_time);
+            const now = new Date();
+            const daysHeld = Math.max(0, (now - entryTime) / (1000 * 60 * 60 * 24));
+            const durationBonus = Math.min(daysHeld * 1, 7); // 1% per day, max 7%
+            
+            // Calculate final score
+            const finalScore = pnlPct + durationBonus;
+            
             // Initialize user data if needed
             if (!userUnrealizedPnl[pos.discord_username]) {
               userUnrealizedPnl[pos.discord_username] = [];
               userPositions[pos.discord_username] = [];
             }
             
-            userUnrealizedPnl[pos.discord_username].push(pnlPct);
+            userUnrealizedPnl[pos.discord_username].push(finalScore);
             const sideSymbol = (pos.side === 'short') ? 'S' : 'L';
-            userPositions[pos.discord_username].push(`${sideSymbol} ${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
+            const bonusIndicator = durationBonus > 0 ? ' *' : '';
+            userPositions[pos.discord_username].push(`${sideSymbol} ${pos.ticker.toUpperCase()} ${finalScore >= 0 ? '+' : ''}${finalScore.toFixed(2)}%${bonusIndicator}`);
           }
         }
         
@@ -1150,61 +1162,38 @@ async function handleLeaderboardCommand(message) {
     });
     
     if (openPositions.length > 0) {
-      // Get unique tickers and batch resolve to coin IDs
+      // Get unique tickers for price fetching
       const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
       const tickerPrices = {};
       
-      // Import batch price fetcher and enhanced resolver
-      const { getPrices } = await import('./cg-batcher.js');
-      const { getResolver } = await import('./price-enhanced-smart.js');
+      console.log('[DEBUG] Fetching prices for', uniqueTickers.length, 'unique tickers...');
       
-      console.log('[DEBUG] Resolving tickers with enhanced resolver...');
-      
-      // Use the same resolver logic as positions command but extract just coin IDs
-      const resolvePromises = uniqueTickers.map(async ticker => {
+      // Use the existing fetchCoinData function for each ticker
+      // This is simpler and more reliable than dynamic imports
+      const pricePromises = uniqueTickers.map(async ticker => {
         try {
-          // Use the resolver from price-enhanced-smart.js
-          const resolver = getResolver();
-          const resolved = await resolver(ticker);
-          const coinId = resolved?.coinId || null;
-          console.log(`[DEBUG] Resolved ${ticker} → ${coinId || 'null'}`);
-          return { ticker, coinId };
+          // Import the working function we know exists
+          const { fetchCoinData } = await import('./price-enhanced-smart.js');
+          const coinData = await fetchCoinData(ticker);
+          return { ticker, price: coinData.price };
         } catch (err) {
-          console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
-          return { ticker, coinId: null };
+          console.log(`[DEBUG] Failed to get price for ${ticker}:`, err.message);
+          return { ticker, price: null };
         }
       });
       
-      const resolvedTickers = await Promise.all(resolvePromises);
-      const tickerToCoinId = {};
-      const validCoinIds = [];
+      const priceResults = await Promise.all(pricePromises);
       
-      // Build mapping
-      resolvedTickers.forEach(r => {
-        if (r.coinId) {
-          tickerToCoinId[r.ticker] = r.coinId;
-          validCoinIds.push(r.coinId);
-        }
-      });
-      
-      // Batch fetch all prices at once
-      const prices = await getPrices(validCoinIds);
-      console.log('[DEBUG] Prices fetched:', prices.length);
-      
-      // Map prices back to tickers
-      validCoinIds.forEach((coinId, index) => {
-        // Find which ticker this coinId belongs to
-        const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
-        if (ticker && prices[index]) {
-          tickerPrices[ticker] = prices[index].price;
-          console.log(`[DEBUG] Mapped ${ticker}: $${prices[index].price}`);
-        } else if (ticker) {
-          tickerPrices[ticker] = null;
-          console.log(`[DEBUG] No price for ${ticker}`);
+      // Build price mapping
+      priceResults.forEach(result => {
+        if (result.price) {
+          tickerPrices[result.ticker] = result.price;
+          console.log(`[DEBUG] Price for ${result.ticker}: $${result.price}`);
         }
       });
       
       console.log('[DEBUG] Starting P&L calculations for', openPositions.length, 'positions');
+      
       // Calculate P&L for each position
       for (const pos of openPositions) {
         const currentPrice = tickerPrices[pos.ticker];
@@ -1272,9 +1261,9 @@ async function handleLeaderboardCommand(message) {
         // Check if we have P&L data for this user
         if (userPositions[username] && userPositions[username].length > 0) {
           const pnlArray = userUnrealizedPnl[username];
-          const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0) / pnlArray.length;
-          const totalText = ` | Total: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}%`;
-          console.log(`[DEBUG] P&L line for ${username}:`, userPositions[username].join(' | ') + totalText);
+          const totalScore = pnlArray.reduce((sum, score) => sum + score, 0) / pnlArray.length;
+          const totalText = ` | Total: ${totalScore >= 0 ? '+' : ''}${totalScore.toFixed(2)}%`;
+          console.log(`[DEBUG] Score line for ${username}:`, userPositions[username].join(' | ') + totalText);
           return `${idx+1}. **${username}**: ${userPositions[username].join(' | ')}${totalText}`;
         } else {
           // Fallback to simple position count
@@ -1292,7 +1281,7 @@ async function handleLeaderboardCommand(message) {
       return;
     }
     
-    response += `Close trades to appear in rankings • Live P&L in \`shumi positions\``;
+    response += `Close trades to appear in rankings • Live P&L + duration bonus in \`shumi positions\`\n* = duration bonus applied`;
     await reply.edit(response);
   } catch (err) {
     console.error('Leaderboard error:', err);
@@ -1347,6 +1336,12 @@ async function handleHelpCommand(message) {
 • Shorts profit when prices fall
 • Rate limit: 5 actions per 30 seconds
 • Competition resets weekly (Monday 00:00 UTC)
+
+**Scoring System:**
+• **P&L:** Basic profit/loss from entry to current price
+• **Duration Bonus:** +1% per day held (max 7% for full week)
+• **Final Score:** P&L + Duration Bonus
+• **Asterisk (*):** Indicates duration bonus applied
 
 **Supported symbols:** All coins available on CoinGecko (thousands of tokens)`;
 
