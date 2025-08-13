@@ -604,20 +604,60 @@ export async function startDiscord() {
           [competition_id]
         );
         
-        // Get live positions for current leaderboard
-        const { rows: liveRows } = await query(
-          `SELECT e.user_id, u.discord_username, 
-                  COUNT(t.id) as open_positions,
-                  SUM(CASE WHEN t.status='closed' THEN COALESCE(t.pnl_pct,0) ELSE 0 END) as closed_pnl
-           FROM entries e 
+        // Get all open positions with details for P&L calculation
+        const { rows: openPositions } = await query(
+          `SELECT t.ticker, t.entry_price, t.side, u.discord_username, e.user_id
+           FROM trades t 
+           JOIN entries e ON e.id = t.entry_id
            JOIN users u ON u.id = e.user_id
-           LEFT JOIN trades t ON t.entry_id = e.id
-           WHERE e.competition_id=$1
-           GROUP BY e.user_id, u.discord_username
-           HAVING COUNT(t.id) > 0
-           ORDER BY closed_pnl DESC`,
+           WHERE e.competition_id=$1 AND t.status='open'`,
           [competition_id]
         );
+        
+        // Calculate unrealized P&L for each user
+        const userUnrealizedPnl = {};
+        const userPositions = {};
+        
+        if (openPositions.length > 0) {
+          // Get unique tickers and fetch prices
+          const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
+          const tickerPrices = {};
+          
+          for (const ticker of uniqueTickers) {
+            try {
+              const coinData = await fetchCoinData(ticker);
+              tickerPrices[ticker] = coinData.price;
+            } catch (err) {
+              console.error(`Failed to fetch price for ${ticker}:`, err.message);
+              tickerPrices[ticker] = null;
+            }
+          }
+          
+          // Calculate P&L for each position
+          for (const pos of openPositions) {
+            const currentPrice = tickerPrices[pos.ticker];
+            if (!currentPrice) continue;
+            
+            const entryPrice = Number(pos.entry_price);
+            const side = pos.side || 'long';
+            
+            let pnlPct;
+            if (side === 'long') {
+              pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+            } else {
+              pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
+            }
+            
+            // Initialize user data if needed
+            if (!userUnrealizedPnl[pos.discord_username]) {
+              userUnrealizedPnl[pos.discord_username] = [];
+              userPositions[pos.discord_username] = [];
+            }
+            
+            userUnrealizedPnl[pos.discord_username].push(pnlPct);
+            userPositions[pos.discord_username].push(`${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`);
+          }
+        }
         
         let description = '';
         
@@ -629,15 +669,27 @@ export async function startDiscord() {
           description += `**Leaderboard:**\n${closedLines.join('\n')}\n\n`;
         }
         
-        if (liveRows.length > 0) {
-          const liveLines = liveRows.map((r, idx) => {
-            const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% realized)` : '';
-            return `${idx+1}. **${r.discord_username}** ${r.open_positions} position${r.open_positions > 1 ? 's' : ''}${closedPnlText}`;
-          });
+        if (Object.keys(userUnrealizedPnl).length > 0) {
+          const liveLines = Object.entries(userUnrealizedPnl)
+            .map(([username, pnlArray]) => {
+              const positions = userPositions[username];
+              const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0) / pnlArray.length;
+              return {
+                username,
+                positions: positions.join(' | '),
+                totalPnl
+              };
+            })
+            .sort((a, b) => b.totalPnl - a.totalPnl)
+            .map((r, idx) => {
+              const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(1)}%`;
+              return `${idx+1}. **${r.username}**: ${r.positions}${totalText}`;
+            });
+          
           description += `**Live Positions:**\n${liveLines.join('\n')}`;
         }
         
-        if (!closedRows.length && !liveRows.length) {
+        if (!closedRows.length && Object.keys(userUnrealizedPnl).length === 0) {
           await i.editReply({ content: 'No participants yet this week. Use `shumi join` to get started!' });
           return;
         }
@@ -1004,7 +1056,7 @@ async function handleLeaderboardCommand(message) {
     const reply = await message.reply('Loading leaderboard...');
     const { competition_id } = await ensureCurrentWeek();
     
-    // Get both closed and current participants
+    // Get closed trades leaderboard
     const { rows: closedRows } = await query(
       `SELECT e.user_id, SUM(COALESCE(t.pnl_pct,0)) as total
        FROM trades t JOIN entries e ON e.id=t.entry_id
@@ -1013,19 +1065,60 @@ async function handleLeaderboardCommand(message) {
       [competition_id]
     );
     
-    const { rows: liveRows } = await query(
-      `SELECT e.user_id, u.discord_username, 
-              COUNT(t.id) as open_positions,
-              SUM(CASE WHEN t.status='closed' THEN COALESCE(t.pnl_pct,0) ELSE 0 END) as closed_pnl
-       FROM entries e 
+    // Get all open positions with details for P&L calculation
+    const { rows: openPositions } = await query(
+      `SELECT t.ticker, t.entry_price, t.side, u.discord_username, e.user_id
+       FROM trades t 
+       JOIN entries e ON e.id = t.entry_id
        JOIN users u ON u.id = e.user_id
-       LEFT JOIN trades t ON t.entry_id = e.id
-       WHERE e.competition_id=$1
-       GROUP BY e.user_id, u.discord_username
-       HAVING COUNT(t.id) > 0
-       ORDER BY closed_pnl DESC`,
+       WHERE e.competition_id=$1 AND t.status='open'`,
       [competition_id]
     );
+    
+    // Calculate unrealized P&L for each user
+    const userUnrealizedPnl = {};
+    const userPositions = {};
+    
+    if (openPositions.length > 0) {
+      // Get unique tickers and fetch prices
+      const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
+      const tickerPrices = {};
+      
+      for (const ticker of uniqueTickers) {
+        try {
+          const coinData = await fetchCoinData(ticker);
+          tickerPrices[ticker] = coinData.price;
+        } catch (err) {
+          console.error(`Failed to fetch price for ${ticker}:`, err.message);
+          tickerPrices[ticker] = null;
+        }
+      }
+      
+      // Calculate P&L for each position
+      for (const pos of openPositions) {
+        const currentPrice = tickerPrices[pos.ticker];
+        if (!currentPrice) continue;
+        
+        const entryPrice = Number(pos.entry_price);
+        const side = pos.side || 'long';
+        
+        let pnlPct;
+        if (side === 'long') {
+          pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+        } else {
+          pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
+        }
+        
+        // Initialize user data if needed
+        if (!userUnrealizedPnl[pos.discord_username]) {
+          userUnrealizedPnl[pos.discord_username] = [];
+          userPositions[pos.discord_username] = [];
+        }
+        
+        userUnrealizedPnl[pos.discord_username].push(pnlPct);
+        userPositions[pos.discord_username].push(`${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`);
+      }
+    }
     
     // Calculate next Monday 00:00 UTC for countdown
     const now = new Date();
@@ -1055,15 +1148,27 @@ async function handleLeaderboardCommand(message) {
       response += `**Leaderboard:**\n${closedLines.join('\n')}\n\n`;
     }
     
-    if (liveRows.length > 0) {
-      const liveLines = liveRows.map((r, idx) => {
-        const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% realized)` : '';
-        return `${idx+1}. **${r.discord_username}** ${r.open_positions} position${r.open_positions > 1 ? 's' : ''}${closedPnlText}`;
-      });
+    if (Object.keys(userUnrealizedPnl).length > 0) {
+      const liveLines = Object.entries(userUnrealizedPnl)
+        .map(([username, pnlArray]) => {
+          const positions = userPositions[username];
+          const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0) / pnlArray.length;
+          return {
+            username,
+            positions: positions.join(' | '),
+            totalPnl
+          };
+        })
+        .sort((a, b) => b.totalPnl - a.totalPnl)
+        .map((r, idx) => {
+          const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(1)}%`;
+          return `${idx+1}. **${r.username}**: ${r.positions}${totalText}`;
+        });
+      
       response += `**Live Positions:**\n${liveLines.join('\n')}\n\n`;
     }
     
-    if (!closedRows.length && !liveRows.length) {
+    if (!closedRows.length && Object.keys(userUnrealizedPnl).length === 0) {
       await reply.edit('No participants yet this week. Use `shumi join` to get started!');
       return;
     }
