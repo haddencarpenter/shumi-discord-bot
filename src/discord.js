@@ -634,7 +634,7 @@ export async function startDiscord() {
             const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% realized)` : '';
             return `${idx+1}. **${r.discord_username}** ${r.open_positions} position${r.open_positions > 1 ? 's' : ''}${closedPnlText}`;
           });
-          description += `**Current Participants:**\n${liveLines.join('\n')}`;
+          description += `**Live Positions:**\n${liveLines.join('\n')}`;
         }
         
         if (!closedRows.length && !liveRows.length) {
@@ -642,10 +642,26 @@ export async function startDiscord() {
           return;
         }
         
+        // Calculate countdown for embed title
+        const now = new Date();
+        const nextMonday = new Date(now);
+        const daysUntilMonday = (7 - now.getUTCDay() + 1) % 7 || 7;
+        nextMonday.setUTCDate(now.getUTCDate() + daysUntilMonday);
+        nextMonday.setUTCHours(0, 0, 0, 0);
+        
+        const timeLeft = nextMonday.getTime() - now.getTime();
+        const daysLeft = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+        const hoursLeft = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+        
+        const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][nextMonday.getUTCDay()];
+        const timeStr = `${String(nextMonday.getUTCHours()).padStart(2, '0')}:${String(nextMonday.getUTCMinutes()).padStart(2, '0')}:${String(nextMonday.getUTCSeconds()).padStart(2, '0')}`;
+        const countdownStr = daysLeft > 0 ? `${daysLeft}d ${hoursLeft}h ${minutesLeft}m` : `${hoursLeft}h ${minutesLeft}m`;
+        
         const embed = new EmbedBuilder()
           .setTitle(`Week ${getIsoWeek(new Date())} Competition`)
           .setColor(0xffd700)
-          .setDescription(description)
+          .setDescription(`⏰ Ends: ${dayName} ${timeStr} (in ${countdownStr})\n\n${description}`)
           .setFooter({ text: 'Close trades to appear in rankings • Live P&L in shumi positions' });
         
         await i.editReply({ embeds: [embed] });
@@ -1011,7 +1027,25 @@ async function handleLeaderboardCommand(message) {
       [competition_id]
     );
     
-    let response = `**Week ${getIsoWeek(new Date())} Competition**\n\n`;
+    // Calculate next Monday 00:00 UTC for countdown
+    const now = new Date();
+    const nextMonday = new Date(now);
+    const daysUntilMonday = (7 - now.getUTCDay() + 1) % 7 || 7; // 0=Sunday, 1=Monday, etc.
+    nextMonday.setUTCDate(now.getUTCDate() + daysUntilMonday);
+    nextMonday.setUTCHours(0, 0, 0, 0);
+    
+    // Calculate time remaining
+    const timeLeft = nextMonday.getTime() - now.getTime();
+    const daysLeft = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+    const hoursLeft = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+    
+    // Format countdown
+    const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][nextMonday.getUTCDay()];
+    const timeStr = `${String(nextMonday.getUTCHours()).padStart(2, '0')}:${String(nextMonday.getUTCMinutes()).padStart(2, '0')}:${String(nextMonday.getUTCSeconds()).padStart(2, '0')}`;
+    const countdownStr = daysLeft > 0 ? `${daysLeft}d ${hoursLeft}h ${minutesLeft}m` : `${hoursLeft}h ${minutesLeft}m`;
+    
+    let response = `**Week ${getIsoWeek(new Date())} Competition**\n⏰ Ends: ${dayName} ${timeStr} (in ${countdownStr})\n\n`;
     
     if (closedRows.length > 0) {
       const closedLines = await Promise.all(closedRows.map(async (r, idx) => {
@@ -1026,7 +1060,7 @@ async function handleLeaderboardCommand(message) {
         const closedPnlText = Number(r.closed_pnl) !== 0 ? ` (${Number(r.closed_pnl).toFixed(2)}% realized)` : '';
         return `${idx+1}. **${r.discord_username}** ${r.open_positions} position${r.open_positions > 1 ? 's' : ''}${closedPnlText}`;
       });
-      response += `**Current Participants:**\n${liveLines.join('\n')}\n\n`;
+      response += `**Live Positions:**\n${liveLines.join('\n')}\n\n`;
     }
     
     if (!closedRows.length && !liveRows.length) {
