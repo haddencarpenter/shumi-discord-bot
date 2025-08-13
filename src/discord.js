@@ -619,19 +619,49 @@ export async function startDiscord() {
         const userPositions = {};
         
         if (openPositions.length > 0) {
-          // Get unique tickers and fetch prices
+          // Get unique tickers and batch resolve to coin IDs
           const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
           const tickerPrices = {};
           
-          for (const ticker of uniqueTickers) {
+          // Import resolver and batch price fetcher
+          const { resolveTicker } = await import('./resolver-advanced.js');
+          const { getPrices } = await import('./cg-batcher.js');
+          
+          // Resolve all tickers to coin IDs in parallel
+          const resolvePromises = uniqueTickers.map(async ticker => {
             try {
-              const coinData = await fetchCoinData(ticker);
-              tickerPrices[ticker] = coinData.price;
+              const resolved = await resolveTicker(ticker);
+              return { ticker, coinId: resolved.coinId };
             } catch (err) {
-              console.error(`Failed to fetch price for ${ticker}:`, err.message);
+              console.error(`Failed to resolve ${ticker}:`, err.message);
+              return { ticker, coinId: null };
+            }
+          });
+          
+          const resolvedTickers = await Promise.all(resolvePromises);
+          const coinIdToTicker = {};
+          const validCoinIds = [];
+          
+          // Build mapping and valid coin IDs list
+          resolvedTickers.forEach(r => {
+            if (r.coinId) {
+              coinIdToTicker[r.coinId] = r.ticker;
+              validCoinIds.push(r.coinId);
+            }
+          });
+          
+          // Batch fetch all prices at once
+          const prices = await getPrices(validCoinIds);
+          
+          // Map prices back to tickers
+          validCoinIds.forEach((coinId, index) => {
+            const ticker = coinIdToTicker[coinId];
+            if (ticker && prices[index]) {
+              tickerPrices[ticker] = prices[index].price;
+            } else if (ticker) {
               tickerPrices[ticker] = null;
             }
-          }
+          });
           
           // Calculate P&L for each position
           for (const pos of openPositions) {
@@ -1081,19 +1111,49 @@ async function handleLeaderboardCommand(message) {
     const userPositions = {};
     
     if (openPositions.length > 0) {
-      // Get unique tickers and fetch prices
+      // Get unique tickers and batch resolve to coin IDs
       const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
       const tickerPrices = {};
       
-      for (const ticker of uniqueTickers) {
+      // Import resolver and batch price fetcher
+      const { resolveTicker } = await import('./resolver-advanced.js');
+      const { getPrices } = await import('./cg-batcher.js');
+      
+      // Resolve all tickers to coin IDs in parallel
+      const resolvePromises = uniqueTickers.map(async ticker => {
         try {
-          const coinData = await fetchCoinData(ticker);
-          tickerPrices[ticker] = coinData.price;
+          const resolved = await resolveTicker(ticker);
+          return { ticker, coinId: resolved.coinId };
         } catch (err) {
-          console.error(`Failed to fetch price for ${ticker}:`, err.message);
+          console.error(`Failed to resolve ${ticker}:`, err.message);
+          return { ticker, coinId: null };
+        }
+      });
+      
+      const resolvedTickers = await Promise.all(resolvePromises);
+      const coinIdToTicker = {};
+      const validCoinIds = [];
+      
+      // Build mapping and valid coin IDs list
+      resolvedTickers.forEach(r => {
+        if (r.coinId) {
+          coinIdToTicker[r.coinId] = r.ticker;
+          validCoinIds.push(r.coinId);
+        }
+      });
+      
+      // Batch fetch all prices at once
+      const prices = await getPrices(validCoinIds);
+      
+      // Map prices back to tickers
+      validCoinIds.forEach((coinId, index) => {
+        const ticker = coinIdToTicker[coinId];
+        if (ticker && prices[index]) {
+          tickerPrices[ticker] = prices[index].price;
+        } else if (ticker) {
           tickerPrices[ticker] = null;
         }
-      }
+      });
       
       // Calculate P&L for each position
       for (const pos of openPositions) {
