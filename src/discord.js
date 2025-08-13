@@ -644,8 +644,8 @@ export async function startDiscord() {
           const { getPrices } = await import('./cg-batcher.js');
           const { resolveSymbolToId } = await import('./symbol-index.js');
           
-          // Resolve all tickers to coin IDs in parallel
-          const resolvePromises = uniqueTickers.map(async ticker => {
+          // Resolve all tickers to coin IDs (synchronous operation)
+          const resolvedTickers = uniqueTickers.map(ticker => {
             try {
               const coinId = resolveSymbolToId(ticker);
               return { ticker, coinId };
@@ -654,8 +654,6 @@ export async function startDiscord() {
               return { ticker, coinId: null };
             }
           });
-          
-          const resolvedTickers = await Promise.all(resolvePromises);
           const tickerToCoinId = {};
           const validCoinIds = [];
           
@@ -1101,8 +1099,10 @@ async function handleJoinCommand(message) {
 
 async function handleLeaderboardCommand(message) {
   try {
+    console.log('[DEBUG] Leaderboard command started');
     const reply = await message.reply('Loading leaderboard...');
     const { competition_id } = await ensureCurrentWeek();
+    console.log('[DEBUG] Competition ID:', competition_id);
     
     // Get closed trades leaderboard
     const { rows: closedRows } = await query(
@@ -1153,18 +1153,18 @@ async function handleLeaderboardCommand(message) {
       const { getPrices } = await import('./cg-batcher.js');
       const { resolveSymbolToId } = await import('./symbol-index.js');
       
-      // Resolve all tickers to coin IDs in parallel
-      const resolvePromises = uniqueTickers.map(async ticker => {
+      // Resolve all tickers to coin IDs (synchronous operation)
+      console.log('[DEBUG] Resolving tickers:', uniqueTickers);
+      const resolvedTickers = uniqueTickers.map(ticker => {
         try {
           const coinId = resolveSymbolToId(ticker);
+          console.log(`[DEBUG] Resolved ${ticker} → ${coinId}`);
           return { ticker, coinId };
         } catch (err) {
-          console.error(`Failed to resolve ${ticker}:`, err.message);
+          console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
           return { ticker, coinId: null };
         }
       });
-      
-      const resolvedTickers = await Promise.all(resolvePromises);
       const tickerToCoinId = {};
       const validCoinIds = [];
       
