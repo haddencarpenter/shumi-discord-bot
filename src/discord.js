@@ -1180,6 +1180,7 @@ async function handleLeaderboardCommand(message) {
       
       // Batch fetch all prices at once
       const prices = await getPrices(validCoinIds);
+      console.log('[DEBUG] Prices fetched:', prices.length);
       
       // Map prices back to tickers
       validCoinIds.forEach((coinId, index) => {
@@ -1187,15 +1188,21 @@ async function handleLeaderboardCommand(message) {
         const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
         if (ticker && prices[index]) {
           tickerPrices[ticker] = prices[index].price;
+          console.log(`[DEBUG] Mapped ${ticker}: $${prices[index].price}`);
         } else if (ticker) {
           tickerPrices[ticker] = null;
+          console.log(`[DEBUG] No price for ${ticker}`);
         }
       });
       
+      console.log('[DEBUG] Starting P&L calculations for', openPositions.length, 'positions');
       // Calculate P&L for each position
       for (const pos of openPositions) {
         const currentPrice = tickerPrices[pos.ticker];
-        if (!currentPrice) continue;
+        if (!currentPrice) {
+          console.log(`[DEBUG] No price for ${pos.ticker}, skipping position`);
+          continue;
+        }
         
         const entryPrice = Number(pos.entry_price);
         const side = pos.side || 'long';
@@ -1247,6 +1254,9 @@ async function handleLeaderboardCommand(message) {
       response += `**Leaderboard:**\n${closedLines.join('\n')}\n\n`;
     }
     
+    console.log('[DEBUG] Building display with', Object.keys(userFallbackCounts).length, 'users');
+    console.log('[DEBUG] P&L data available for:', Object.keys(userUnrealizedPnl).length, 'users');
+    
     // Display live positions - either with P&L or fallback to count
     if (Object.keys(userFallbackCounts).length > 0) {
       const liveLines = Object.keys(userFallbackCounts).map((username, idx) => {
@@ -1255,10 +1265,12 @@ async function handleLeaderboardCommand(message) {
           const pnlArray = userUnrealizedPnl[username];
           const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0) / pnlArray.length;
           const totalText = ` | Total: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}%`;
+          console.log(`[DEBUG] P&L line for ${username}:`, userPositions[username].join(' | ') + totalText);
           return `${idx+1}. **${username}**: ${userPositions[username].join(' | ')}${totalText}`;
         } else {
           // Fallback to simple position count
           const count = userFallbackCounts[username];
+          console.log(`[DEBUG] Fallback line for ${username}:`, `${count} position${count > 1 ? 's' : ''}`);
           return `${idx+1}. **${username}**: ${count} position${count > 1 ? 's' : ''}`;
         }
       });
