@@ -614,9 +614,26 @@ export async function startDiscord() {
           [competition_id]
         );
         
+        // Also get user position counts for fallback display
+        const { rows: userCounts } = await query(
+          `SELECT u.discord_username, COUNT(t.id) as position_count
+           FROM trades t 
+           JOIN entries e ON e.id = t.entry_id
+           JOIN users u ON u.id = e.user_id
+           WHERE e.competition_id=$1 AND t.status='open'
+           GROUP BY u.discord_username`,
+          [competition_id]
+        );
+        
         // Calculate unrealized P&L for each user
         const userUnrealizedPnl = {};
         const userPositions = {};
+        const userFallbackCounts = {};
+        
+        // Store fallback counts
+        userCounts.forEach(row => {
+          userFallbackCounts[row.discord_username] = row.position_count;
+        });
         
         if (openPositions.length > 0) {
           // Get unique tickers and batch resolve to coin IDs
@@ -700,27 +717,26 @@ export async function startDiscord() {
           description += `**Leaderboard:**\n${closedLines.join('\n')}\n\n`;
         }
         
-        if (Object.keys(userUnrealizedPnl).length > 0) {
-          const liveLines = Object.entries(userUnrealizedPnl)
-            .map(([username, pnlArray]) => {
-              const positions = userPositions[username];
+        // Display live positions - either with P&L or fallback to count
+        if (Object.keys(userFallbackCounts).length > 0) {
+          const liveLines = Object.keys(userFallbackCounts).map((username, idx) => {
+            // Check if we have P&L data for this user
+            if (userPositions[username] && userPositions[username].length > 0) {
+              const pnlArray = userUnrealizedPnl[username];
               const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0) / pnlArray.length;
-              return {
-                username,
-                positions: positions.join(' | '),
-                totalPnl
-              };
-            })
-            .sort((a, b) => b.totalPnl - a.totalPnl)
-            .map((r, idx) => {
-              const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(2)}%`;
-              return `${idx+1}. **${r.username}**: ${r.positions}${totalText}`;
-            });
+              const totalText = ` | Total: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}%`;
+              return `${idx+1}. **${username}**: ${userPositions[username].join(' | ')}${totalText}`;
+            } else {
+              // Fallback to simple position count
+              const count = userFallbackCounts[username];
+              return `${idx+1}. **${username}**: ${count} position${count > 1 ? 's' : ''}`;
+            }
+          });
           
           description += `**Live Positions:**\n${liveLines.join('\n')}`;
         }
         
-        if (!closedRows.length && Object.keys(userUnrealizedPnl).length === 0) {
+        if (!closedRows.length && Object.keys(userFallbackCounts).length === 0) {
           await i.editReply({ content: 'No participants yet this week. Use `shumi join` to get started!' });
           return;
         }
@@ -1108,9 +1124,26 @@ async function handleLeaderboardCommand(message) {
       [competition_id]
     );
     
+    // Also get user position counts for fallback display
+    const { rows: userCounts } = await query(
+      `SELECT u.discord_username, COUNT(t.id) as position_count
+       FROM trades t 
+       JOIN entries e ON e.id = t.entry_id
+       JOIN users u ON u.id = e.user_id
+       WHERE e.competition_id=$1 AND t.status='open'
+       GROUP BY u.discord_username`,
+      [competition_id]
+    );
+    
     // Calculate unrealized P&L for each user
     const userUnrealizedPnl = {};
     const userPositions = {};
+    const userFallbackCounts = {};
+    
+    // Store fallback counts
+    userCounts.forEach(row => {
+      userFallbackCounts[row.discord_username] = row.position_count;
+    });
     
     if (openPositions.length > 0) {
       console.log('[LEADERBOARD] Processing', openPositions.length, 'open positions');
@@ -1215,27 +1248,26 @@ async function handleLeaderboardCommand(message) {
       response += `**Leaderboard:**\n${closedLines.join('\n')}\n\n`;
     }
     
-    if (Object.keys(userUnrealizedPnl).length > 0) {
-      const liveLines = Object.entries(userUnrealizedPnl)
-        .map(([username, pnlArray]) => {
-          const positions = userPositions[username];
+    // Display live positions - either with P&L or fallback to count
+    if (Object.keys(userFallbackCounts).length > 0) {
+      const liveLines = Object.keys(userFallbackCounts).map((username, idx) => {
+        // Check if we have P&L data for this user
+        if (userPositions[username] && userPositions[username].length > 0) {
+          const pnlArray = userUnrealizedPnl[username];
           const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0) / pnlArray.length;
-          return {
-            username,
-            positions: positions.join(' | '),
-            totalPnl
-          };
-        })
-        .sort((a, b) => b.totalPnl - a.totalPnl)
-        .map((r, idx) => {
-          const totalText = ` | Total: ${r.totalPnl >= 0 ? '+' : ''}${r.totalPnl.toFixed(2)}%`;
-          return `${idx+1}. **${r.username}**: ${r.positions}${totalText}`;
-        });
+          const totalText = ` | Total: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}%`;
+          return `${idx+1}. **${username}**: ${userPositions[username].join(' | ')}${totalText}`;
+        } else {
+          // Fallback to simple position count
+          const count = userFallbackCounts[username];
+          return `${idx+1}. **${username}**: ${count} position${count > 1 ? 's' : ''}`;
+        }
+      });
       
       response += `**Live Positions:**\n${liveLines.join('\n')}\n\n`;
     }
     
-    if (!closedRows.length && Object.keys(userUnrealizedPnl).length === 0) {
+    if (!closedRows.length && Object.keys(userFallbackCounts).length === 0) {
       await reply.edit('No participants yet this week. Use `shumi join` to get started!');
       return;
     }
