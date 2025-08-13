@@ -647,7 +647,8 @@ export async function startDiscord() {
           // Resolve all tickers to coin IDs (synchronous operation)
           const resolvedTickers = uniqueTickers.map(ticker => {
             try {
-              const coinId = resolveSymbolToId(ticker);
+              const resolved = resolveSymbolToId(ticker);
+              const coinId = resolved ? resolved.coinId : null;
               return { ticker, coinId };
             } catch (err) {
               console.error(`Failed to resolve ${ticker}:`, err.message);
@@ -1157,7 +1158,8 @@ async function handleLeaderboardCommand(message) {
       console.log('[DEBUG] Resolving tickers:', uniqueTickers);
       const resolvedTickers = uniqueTickers.map(ticker => {
         try {
-          const coinId = resolveSymbolToId(ticker);
+          const resolved = resolveSymbolToId(ticker);
+          const coinId = resolved ? resolved.coinId : null;
           console.log(`[DEBUG] Resolved ${ticker} → ${coinId}`);
           return { ticker, coinId };
         } catch (err) {
