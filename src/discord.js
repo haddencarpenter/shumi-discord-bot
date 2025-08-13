@@ -640,21 +640,25 @@ export async function startDiscord() {
           const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
           const tickerPrices = {};
           
-          // Import batch price fetcher
+          // Import batch price fetcher and enhanced resolver
           const { getPrices } = await import('./cg-batcher.js');
-          const { resolveSymbolToId } = await import('./symbol-index.js');
+          const { getResolver } = await import('./price-enhanced-smart.js');
           
-          // Resolve all tickers to coin IDs (synchronous operation)
-          const resolvedTickers = uniqueTickers.map(ticker => {
+          // Use the same resolver logic as positions command but extract just coin IDs
+          const resolvePromises = uniqueTickers.map(async ticker => {
             try {
-              const resolved = resolveSymbolToId(ticker);
-              const coinId = resolved ? resolved.coinId : null;
+              // Use the resolver from price-enhanced-smart.js
+              const resolver = getResolver();
+              const resolved = await resolver(ticker);
+              const coinId = resolved?.coinId || null;
               return { ticker, coinId };
             } catch (err) {
               console.error(`Failed to resolve ${ticker}:`, err.message);
               return { ticker, coinId: null };
             }
           });
+          
+          const resolvedTickers = await Promise.all(resolvePromises);
           const tickerToCoinId = {};
           const validCoinIds = [];
           
@@ -1150,23 +1154,28 @@ async function handleLeaderboardCommand(message) {
       const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
       const tickerPrices = {};
       
-      // Import batch price fetcher
+      // Import batch price fetcher and enhanced resolver
       const { getPrices } = await import('./cg-batcher.js');
-      const { resolveSymbolToId } = await import('./symbol-index.js');
+      const { getResolver } = await import('./price-enhanced-smart.js');
       
-      // Resolve all tickers to coin IDs (synchronous operation)
-      console.log('[DEBUG] Resolving tickers:', uniqueTickers);
-      const resolvedTickers = uniqueTickers.map(ticker => {
+      console.log('[DEBUG] Resolving tickers with enhanced resolver...');
+      
+      // Use the same resolver logic as positions command but extract just coin IDs
+      const resolvePromises = uniqueTickers.map(async ticker => {
         try {
-          const resolved = resolveSymbolToId(ticker);
-          const coinId = resolved ? resolved.coinId : null;
-          console.log(`[DEBUG] Resolved ${ticker} → ${coinId}`);
+          // Use the resolver from price-enhanced-smart.js
+          const resolver = getResolver();
+          const resolved = await resolver(ticker);
+          const coinId = resolved?.coinId || null;
+          console.log(`[DEBUG] Resolved ${ticker} → ${coinId || 'null'}`);
           return { ticker, coinId };
         } catch (err) {
           console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
           return { ticker, coinId: null };
         }
       });
+      
+      const resolvedTickers = await Promise.all(resolvePromises);
       const tickerToCoinId = {};
       const validCoinIds = [];
       
