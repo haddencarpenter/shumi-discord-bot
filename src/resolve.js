@@ -46,6 +46,7 @@ const CANONICAL = {
   cvx: "convex-finance",  // Convex Finance
   omni: "omni-network",  // Omni Network (modern) not the old Mastercoin
   mavia: "heroes-of-mavia",  // Heroes of Mavia
+  troll: "troll-2",  // TROLL (correct coin with higher market cap)
   // add more as you see fit
 };
 
