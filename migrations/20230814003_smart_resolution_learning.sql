@@ -15,8 +15,7 @@ CREATE TABLE IF NOT EXISTS ticker_mappings (
   updated_at         TIMESTAMP    NOT NULL DEFAULT NOW(),
   expires_at         TIMESTAMP,                -- optional TTL for revalidation
   is_banned          BOOLEAN      NOT NULL DEFAULT false,
-  ban_reason         VARCHAR(128),             -- why it was banned
-  UNIQUE (contract_address, chain) WHERE contract_address IS NOT NULL
+  ban_reason         VARCHAR(128)              -- why it was banned
 );
 
 -- Enhanced failures with backoff and context
@@ -35,6 +34,9 @@ CREATE TABLE IF NOT EXISTS ticker_aliases (
   alias            VARCHAR(64) PRIMARY KEY,     -- e.g., 'bitcoin', 'btc', 'Ƀ'
   ticker           VARCHAR(64) NOT NULL         -- normalized canonical ticker key
 );
+
+-- Unique constraint for contract addresses
+CREATE UNIQUE INDEX idx_ticker_mappings_contract_unique ON ticker_mappings(contract_address, chain) WHERE contract_address IS NOT NULL;
 
 -- Performance indexes
 CREATE INDEX idx_ticker_mappings_ticker ON ticker_mappings(ticker) WHERE is_banned = false;
