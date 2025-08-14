@@ -58,7 +58,7 @@ const STATIC_BLOCKED_IDS = new Set([
   "wrapped-avax", "wrapped-bnb", "wrapped-matic", "wmatic", "matic-wormhole", "wrapped-fantom",
   "bridged-usdc", "bridged-usdt", "bridged-dai",
   "multichain-bridged-usdc", "multichain-bridged-btc", "multichain-bridged-eth",
-  "synapse-bridged-usdc", "synapse-bridged-usdt", 
+  "synapse-bridged-usdc", "synapse-bridged-usdt",
   "anyswap-eth", "anyswap-btc", "anyswap-bnb",
   "polygon-bridged-usdc", "arbitrum-bridged-usdc", "optimism-bridged-eth",
 ]);
@@ -73,21 +73,21 @@ const BLOCKED_IDS = new Set([...STATIC_BLOCKED_IDS, ...ENV_BLOCKED]);
 /** Heuristic text rules to exclude wrapped/bridged variants */
 function looksWrappedOrPegged(name) {
   const s = name.toLowerCase();
-  
+
   // Special cases: These are legitimate protocol tokens, not wrapped versions
   const legitimateProtocolNames = [
     "wormhole",
-    "synapse-2", 
+    "synapse-2",
     "synapse protocol",
     "multichain",
     "anyswap"
   ];
-  
+
   // If it's exactly a protocol name, it's not wrapped
   if (legitimateProtocolNames.some(protocol => s === protocol)) {
     return false;
   }
-  
+
   return (
     s.includes("wrapped") ||
     s.includes("wbtc") ||
@@ -108,17 +108,18 @@ function looksWrappedOrPegged(name) {
   );
 }
 
-/** Simple ranking: prefer exact symbol match, then highest market cap */
+/** Ranking: only exact symbol matches, ranked by market cap (lower rank = better) */
 function scoreCandidate(q, c) {
   const ql = q.toLowerCase();
-  
-  // Exact symbol match gets priority
+
+  // Only exact symbol matches are allowed
   if (c.symbol?.toLowerCase() === ql) {
-    return (c.market_cap_rank || 9999) * -1; // Negative for sorting (lower rank = higher score)
+    // Lower market cap rank = higher score (invert the rank)
+    return 10000 - (c.market_cap_rank || 9999);
   }
-  
-  // Otherwise just use market cap rank (lower number = better, so negate it)
-  return (c.market_cap_rank || 9999) * -10; // Less priority than exact matches
+
+  // No score for non-exact matches
+  return 0;
 }
 
 // Rate limiting for CoinGecko API calls
@@ -128,24 +129,24 @@ const MIN_INTERVAL_MS = 2000; // 2 seconds between calls (more conservative)
 async function rateLimitedApiCall(url) {
   const now = Date.now();
   const timeSince = now - lastApiCall;
-  
+
   if (timeSince < MIN_INTERVAL_MS) {
     const waitTime = MIN_INTERVAL_MS - timeSince;
     console.log(`[RATE_LIMIT] Waiting ${waitTime}ms before next API call`);
     await new Promise(resolve => setTimeout(resolve, waitTime));
   }
-  
+
   lastApiCall = Date.now();
-  
+
   try {
     // Add API key headers if using Pro API
     const headers = {};
     if (process.env.COINGECKO_API_KEY && url.includes('pro-api.coingecko.com')) {
       headers['x-cg-pro-api-key'] = process.env.COINGECKO_API_KEY;
     }
-    
+
     const response = await fetch(url, { headers });
-    
+
     if (response.status === 429) {
       // Rate limited - wait 1 minute and retry
       const retryDelay = 60000; // 60 seconds (1 minute)
@@ -153,17 +154,17 @@ async function rateLimitedApiCall(url) {
       await new Promise(resolve => setTimeout(resolve, retryDelay));
       return await fetch(url, { headers }); // Retry once with headers
     }
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     // Check if response contains "Throttled" text instead of JSON
     const responseText = await response.text();
     if (responseText.trim()?.includes('Throttled')) {
       console.log(`[RATE_LIMIT] Received "Throttled" response: "${responseText.trim()}", waiting 60s before retry`);
       await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
-      
+
       // Retry the request after waiting
       console.log(`[RATE_LIMIT] Retrying request after throttling wait`);
       const retryHeaders = {};
@@ -172,12 +173,12 @@ async function rateLimitedApiCall(url) {
       }
       const retryResponse = await fetch(url, { headers: retryHeaders });
       const retryText = await retryResponse.text();
-      
+
       // If still throttled, throw error to prevent infinite retry
       if (retryText.trim()?.includes('Throttled')) {
         throw new Error('Rate limited - still throttled after 60s wait');
       }
-      
+
       // Return the successful retry response
       return {
         ok: true,
@@ -186,7 +187,7 @@ async function rateLimitedApiCall(url) {
         text: () => Promise.resolve(retryText)
       };
     }
-    
+
     // Create a new response object with the text
     return {
       ok: true,
@@ -211,7 +212,7 @@ export async function resolveCoinId(query) {
 
   try {
     // Search CoinGecko with rate limiting (Pro API if available)
-    const baseUrl = process.env.COINGECKO_API_KEY 
+    const baseUrl = process.env.COINGECKO_API_KEY
       ? 'https://pro-api.coingecko.com/api/v3'
       : 'https://api.coingecko.com/api/v3';
     const searchUrl = `${baseUrl}/search?query=${encodeURIComponent(q)}`;
@@ -225,6 +226,8 @@ export async function resolveCoinId(query) {
         symbol: c.symbol,
         market_cap_rank: c.market_cap_rank ?? 9999,
       }))
+      // Only include exact symbol matches
+      .filter(c => c.symbol?.toLowerCase() === q)
       // hard exclude IDs we hate
       .filter(c => !BLOCKED_IDS.has(c.id))
       // soft exclude obviously wrapped variants unless user asked for them
@@ -240,7 +243,7 @@ export async function resolveCoinId(query) {
 
     // Sort by score (highest first)
     coins.sort((a, b) => scoreCandidate(q, b) - scoreCandidate(q, a));
-    
+
     return coins[0].id;
   } catch (error) {
     console.error(`Error resolving coin ID for "${query}":`, error.message);
@@ -252,10 +255,10 @@ export async function resolveCoinId(query) {
 export async function resolveMany(queries) {
   const out = [];
   for (const q of queries) {
-    try { 
+    try {
       const id = await resolveCoinId(q);
       out.push(id);
-    } catch { 
+    } catch {
       out.push(null);
     }
   }
@@ -265,7 +268,7 @@ export async function resolveMany(queries) {
 /** Debug function to see what the resolver would pick */
 export async function debugResolve(query) {
   const q = String(query).trim().toLowerCase();
-  
+
   // Check canonical first
   if (CANONICAL[q]) {
     return {
@@ -275,32 +278,34 @@ export async function debugResolve(query) {
       candidates: []
     };
   }
-  
+
   try {
     // Use Pro API if available
-    const baseUrl = process.env.COINGECKO_API_KEY 
+    const baseUrl = process.env.COINGECKO_API_KEY
       ? 'https://pro-api.coingecko.com/api/v3'
       : 'https://api.coingecko.com/api/v3';
     const searchUrl = `${baseUrl}/search?query=${encodeURIComponent(q)}`;
     const response = await rateLimitedApiCall(searchUrl);
     const data = await response.json();
-    
+
     const allCandidates = (data?.coins || []).slice(0, 10).map(c => ({
       id: c.id,
       name: c.name,
       symbol: c.symbol,
       market_cap_rank: c.market_cap_rank ?? 9999,
+      exact_symbol_match: c.symbol?.toLowerCase() === q,
       blocked: BLOCKED_IDS.has(c.id),
       looks_wrapped: looksWrappedOrPegged(c.name || "") || looksWrappedOrPegged(c.id || ""),
       score: scoreCandidate(q, c)
     }));
-    
+
     const filtered = allCandidates
+      .filter(c => c.exact_symbol_match)
       .filter(c => !c.blocked)
       .filter(c => !c.looks_wrapped);
-    
+
     filtered.sort((a, b) => b.score - a.score);
-    
+
     return {
       query: query,
       resolved_id: filtered[0]?.id || null,
@@ -322,7 +327,7 @@ export async function debugResolve(query) {
 export async function loadCache(verbose = false) {
   const commonTickers = ['btc', 'eth', 'sol', 'doge', 'shib', 'pepe', 'sd', 'matic', 'uni', 'link'];
   if (verbose) console.log('🔥 Warming resolver cache...');
-  
+
   const results = await Promise.allSettled(
     commonTickers.map(async ticker => {
       const id = await resolveCoinId(ticker);
@@ -330,10 +335,10 @@ export async function loadCache(verbose = false) {
       return { ticker, id };
     })
   );
-  
+
   const successful = results.filter(r => r.status === 'fulfilled' && r.value.id).length;
   if (verbose) console.log(`Resolver cache warmed: ${successful}/${commonTickers.length} tickers`);
-  
+
   return successful;
 }
 
