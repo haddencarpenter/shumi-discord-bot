@@ -193,6 +193,11 @@ export async function fetchCoinData(ticker) {
       throw new Error(`could not find base asset in pair "${ticker}". try a clearer ticker`);
     }
     
+    // Check if user entered a contract address instead of ticker
+    if (ticker.startsWith('0x') && ticker.length === 42) {
+      throw new Error(`Contract addresses not supported. Please use ticker symbols like BTC, ETH, SOL instead of ${ticker}`);
+    }
+    
     throw new Error(`price not found for ${ticker}. try common tickers like btc, eth, sol, doge, shib, pepe`);
   }
 }
