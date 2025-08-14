@@ -105,8 +105,14 @@ class SmartResolverV2 {
       return { banned: true, reason: 'bridged_token' };
     }
     
-    // Ban derivative tokens
-    if (lowerCoinId.includes('atoken') || lowerCoinId.includes('ctoken') || lowerTicker.startsWith('a') || lowerTicker.startsWith('c')) {
+    // Ban derivative tokens (but allow legitimate tokens like APT)
+    if (lowerCoinId.includes('atoken') || lowerCoinId.includes('ctoken')) {
+      return { banned: true, reason: 'derivative_token' };
+    }
+    
+    // Ban tokens that start with 'a' or 'c' ONLY if they're clearly derivative
+    if ((lowerTicker.startsWith('a') && lowerTicker.length > 3 && lowerCoinId.includes('aave')) ||
+        (lowerTicker.startsWith('c') && lowerTicker.length > 3 && lowerCoinId.includes('compound'))) {
       return { banned: true, reason: 'derivative_token' };
     }
     
@@ -515,6 +521,19 @@ class SmartResolverV2 {
     
     // Try to learn fresh
     return await this.learnFromAPI(normalized);
+  }
+
+  /**
+   * Clear backoff for a ticker (emergency function)
+   */
+  async clearBackoff(ticker) {
+    const normalized = this.normalizeTicker(ticker);
+    if (!normalized) return false;
+    
+    await query('DELETE FROM failed_resolutions WHERE ticker = $1', [normalized]);
+    
+    console.log(`[SMART_RESOLVER_V2] 🔧 Cleared backoff for: ${normalized}`);
+    return true;
   }
 }
 

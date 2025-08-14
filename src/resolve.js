@@ -41,6 +41,11 @@ const CANONICAL = {
   any: "anyswap",  // Old Anyswap token
   sd: "stader",  // Stader token - fixes SD disambiguation issue
   bio: "bio-protocol",  // Bio Protocol - fixes BIO disambiguation issue
+  spx: "spx6900",  // SPX6900
+  pendle: "pendle",  // Pendle
+  cvx: "convex-finance",  // Convex Finance
+  omni: "omni-network",  // Omni Network
+  mavia: "heroes-of-mavia",  // Heroes of Mavia
   // add more as you see fit
 };
 
