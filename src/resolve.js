@@ -44,7 +44,7 @@ const CANONICAL = {
   spx: "spx6900",  // SPX6900
   pendle: "pendle",  // Pendle
   cvx: "convex-finance",  // Convex Finance
-  omni: "omni-network",  // Omni Network
+  // omni: will be auto-resolved by Smart Resolver (coinID conflicts exist)
   mavia: "heroes-of-mavia",  // Heroes of Mavia
   // add more as you see fit
 };
