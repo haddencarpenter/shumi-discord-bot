@@ -1,12 +1,8 @@
 -- Migration 003: Smart resolution learning system
 -- Enhanced with chain context, contract awareness, and poisoning prevention
 
--- Drop the simple v1 tables if they exist
-DROP TABLE IF EXISTS ticker_mappings;
-DROP TABLE IF EXISTS failed_resolutions;
-
--- Enhanced canonical mapping table
-CREATE TABLE ticker_mappings (
+-- Enhanced canonical mapping table (CREATE IF NOT EXISTS for safety)
+CREATE TABLE IF NOT EXISTS ticker_mappings (
   ticker             VARCHAR(64) PRIMARY KEY,  -- normalized user input (base only)
   coingecko_id       VARCHAR(128) NOT NULL,
   contract_address   VARCHAR(128),             -- null for non-erc20 or CEX-only
@@ -24,7 +20,7 @@ CREATE TABLE ticker_mappings (
 );
 
 -- Enhanced failures with backoff and context
-CREATE TABLE failed_resolutions (
+CREATE TABLE IF NOT EXISTS failed_resolutions (
   ticker           VARCHAR(64) PRIMARY KEY,
   failure_count    INTEGER      NOT NULL DEFAULT 1,
   last_reason      VARCHAR(64),                 -- 'ratelimit','not_found','ambiguous','wrapped','banned'
@@ -35,7 +31,7 @@ CREATE TABLE failed_resolutions (
 );
 
 -- Ticker aliases for common variations
-CREATE TABLE ticker_aliases (
+CREATE TABLE IF NOT EXISTS ticker_aliases (
   alias            VARCHAR(64) PRIMARY KEY,     -- e.g., 'bitcoin', 'btc', 'Ƀ'
   ticker           VARCHAR(64) NOT NULL         -- normalized canonical ticker key
 );
