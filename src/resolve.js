@@ -44,7 +44,7 @@ const CANONICAL = {
   spx: "spx6900",  // SPX6900
   pendle: "pendle",  // Pendle
   cvx: "convex-finance",  // Convex Finance
-  // omni: will be auto-resolved by Smart Resolver (coinID conflicts exist)
+  omni: "omni-network",  // Omni Network (modern) not the old Mastercoin
   mavia: "heroes-of-mavia",  // Heroes of Mavia
   // add more as you see fit
 };
@@ -152,26 +152,53 @@ async function rateLimitedApiCall(url) {
   lastApiCall = Date.now();
   
   try {
-    const response = await fetch(url);
+    // Add API key headers if using Pro API
+    const headers = {};
+    if (process.env.COINGECKO_API_KEY && url.includes('pro-api.coingecko.com')) {
+      headers['x-cg-pro-api-key'] = process.env.COINGECKO_API_KEY;
+    }
+    
+    const response = await fetch(url, { headers });
     
     if (response.status === 429) {
-      // Rate limited - wait longer and retry
-      const retryDelay = 8000; // 8 seconds (increased)
+      // Rate limited - wait 1 minute and retry
+      const retryDelay = 60000; // 60 seconds (1 minute)
       console.log(`[RATE_LIMIT] 429 received, waiting ${retryDelay}ms before retry`);
       await new Promise(resolve => setTimeout(resolve, retryDelay));
-      return await fetch(url); // Retry once
+      return await fetch(url, { headers }); // Retry once with headers
     }
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
-    // Check if response is "Throttled" text instead of JSON
+    // Check if response contains "Throttled" text instead of JSON
     const responseText = await response.text();
-    if (responseText.trim() === 'Throttled') {
-      console.log(`[RATE_LIMIT] Received "Throttled" response, waiting 10s`);
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      throw new Error('Rate limited - received "Throttled" response');
+    if (responseText.trim()?.includes('Throttled')) {
+      console.log(`[RATE_LIMIT] Received "Throttled" response: "${responseText.trim()}", waiting 60s before retry`);
+      await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
+      
+      // Retry the request after waiting
+      console.log(`[RATE_LIMIT] Retrying request after throttling wait`);
+      const retryHeaders = {};
+      if (process.env.COINGECKO_API_KEY && url.includes('pro-api.coingecko.com')) {
+        retryHeaders['x-cg-pro-api-key'] = process.env.COINGECKO_API_KEY;
+      }
+      const retryResponse = await fetch(url, { headers: retryHeaders });
+      const retryText = await retryResponse.text();
+      
+      // If still throttled, throw error to prevent infinite retry
+      if (retryText.trim()?.includes('Throttled')) {
+        throw new Error('Rate limited - still throttled after 60s wait');
+      }
+      
+      // Return the successful retry response
+      return {
+        ok: true,
+        status: retryResponse.status,
+        json: () => Promise.resolve(JSON.parse(retryText)),
+        text: () => Promise.resolve(retryText)
+      };
     }
     
     // Create a new response object with the text
@@ -197,8 +224,11 @@ export async function resolveCoinId(query) {
   if (q === "weth" || q === "wbtc" || q === "steth") return q;
 
   try {
-    // Search CoinGecko with rate limiting
-    const searchUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(q)}`;
+    // Search CoinGecko with rate limiting (Pro API if available)
+    const baseUrl = process.env.COINGECKO_API_KEY 
+      ? 'https://pro-api.coingecko.com/api/v3'
+      : 'https://api.coingecko.com/api/v3';
+    const searchUrl = `${baseUrl}/search?query=${encodeURIComponent(q)}`;
     const response = await rateLimitedApiCall(searchUrl);
     const data = await response.json();
 
@@ -261,7 +291,11 @@ export async function debugResolve(query) {
   }
   
   try {
-    const searchUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(q)}`;
+    // Use Pro API if available
+    const baseUrl = process.env.COINGECKO_API_KEY 
+      ? 'https://pro-api.coingecko.com/api/v3'
+      : 'https://api.coingecko.com/api/v3';
+    const searchUrl = `${baseUrl}/search?query=${encodeURIComponent(q)}`;
     const response = await rateLimitedApiCall(searchUrl);
     const data = await response.json();
     
