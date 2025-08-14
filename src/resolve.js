@@ -108,31 +108,17 @@ function looksWrappedOrPegged(name) {
   );
 }
 
-/** Score candidates: prefer native, big mcap, exact symbol/name */
+/** Simple ranking: prefer exact symbol match, then highest market cap */
 function scoreCandidate(q, c) {
-  let score = 0;
   const ql = q.toLowerCase();
   
-  // Exact matches get huge boost
-  if (c.symbol?.toLowerCase() === ql) score += 50;
-  if (c.name?.toLowerCase() === ql) score += 40;
-  
-  // Market cap rank bonus (higher rank = lower number = better)
-  if (typeof c.market_cap_rank === "number") {
-    score += Math.max(0, 100 - c.market_cap_rank);
+  // Exact symbol match gets priority
+  if (c.symbol?.toLowerCase() === ql) {
+    return (c.market_cap_rank || 9999) * -1; // Negative for sorting (lower rank = higher score)
   }
   
-  // Penalize wrapped/pegged variants heavily
-  if (looksWrappedOrPegged(c.name || "") || looksWrappedOrPegged(c.id || "")) {
-    score -= 100;
-  }
-  
-  // Bonus for coins that are likely "native" versions
-  if (c.id && !c.id.includes("-") && !c.id.includes("wrapped")) {
-    score += 10;
-  }
-  
-  return score;
+  // Otherwise just use market cap rank (lower number = better, so negate it)
+  return (c.market_cap_rank || 9999) * -10; // Less priority than exact matches
 }
 
 // Rate limiting for CoinGecko API calls
