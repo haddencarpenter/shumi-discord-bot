@@ -124,11 +124,11 @@ export async function getPricesWithFallback(tokens, strategy) {
   // For tokens not in symbol index, try fallback resolver
   if (needsFallback.length > 0 && strategy === 'fallback') {
     // Import the old resolver for fallback
-    const { resolveCoinId } = await import('./resolve.js');
+    const smartResolver = await import('./smart-resolver-v2.js');
     
     for (const token of needsFallback) {
       try {
-        const coinId = await resolveCoinId(token.symbol);
+        const coinId = await smartResolver.default.resolve(token.symbol);
         if (coinId) {
           // Update the result with fallback resolution
           const resultIndex = results.findIndex(r => r.symbol === token.symbol.toUpperCase());

@@ -10,6 +10,7 @@ import { startDiscord } from './discord.js';
 import { scheduleDailyJob } from './sentiment.js';
 import { assertSingleInstance } from '../db/singleton.js';
 import { buildSymbolIndex, scheduleIndexRefresh } from './symbol-index.js';
+import smartResolver from './smart-resolver-v2.js';
 
 (async () => {
   // Ensure single instance
@@ -21,6 +22,10 @@ import { buildSymbolIndex, scheduleIndexRefresh } from './symbol-index.js';
   
   // Schedule daily refresh of symbol index
   scheduleIndexRefresh();
+  
+  // Warm up smart resolver with learned mappings
+  console.log('Warming up smart resolver...');
+  await smartResolver.warmup();
   
   await startDiscord();
   scheduleDailyJob('0 14 * * *');

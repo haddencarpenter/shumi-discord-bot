@@ -1,11 +1,11 @@
 // Enhanced price-smart.js - Drop-in replacement with advanced resolver
 import axios from 'axios';
-import { resolveCoinId } from './resolve.js';
+import smartResolver from './smart-resolver-v2.js';
 import { getCoinGeckoConfig } from './cg-batcher.js';
 
 // Adapter to match the expected resolveQuery interface
 async function resolveQuery(rawQuery) {
-  const result = await resolveCoinId(rawQuery.trim().toLowerCase());
+  const result = await smartResolver.resolve(rawQuery.trim().toLowerCase());
   if (result) {
     return { type: 'coin', id: result };
   }

@@ -5,6 +5,7 @@ import { parseInputTokens, getPricesWithFallback, formatPriceForDiscord } from '
 import { query } from './db.js';
 import { normalizeTicker } from './util/tickers.js';
 import { version, shortVersion, startedAt } from './version.js';
+import smartResolver from './smart-resolver-v2.js';
 
 const enableAuto = (process.env.SHUMI_AUTOPROFILE || 'off') === 'on';
 
@@ -127,7 +128,19 @@ export async function startDiscord() {
     new SlashCommandBuilder()
       .setName('price')
       .setDescription('get current prices')
-      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true))
+      .addStringOption(o=>o.setName('tickers').setDescription('space-separated tickers (max 10)').setRequired(true)),
+    new SlashCommandBuilder()
+      .setName('resolver-stats')
+      .setDescription('📊 Show smart resolver learning statistics'),
+    new SlashCommandBuilder()
+      .setName('resolver-relearn')
+      .setDescription('🔄 Force relearn a ticker mapping')
+      .addStringOption(o=>o.setName('ticker').setDescription('Ticker to relearn').setRequired(true)),
+    new SlashCommandBuilder()
+      .setName('resolver-ban')
+      .setDescription('🚫 Ban a ticker from learning (admin only)')
+      .addStringOption(o=>o.setName('ticker').setDescription('Ticker to ban').setRequired(true))
+      .addStringOption(o=>o.setName('reason').setDescription('Ban reason').setRequired(false))
   ];
 
   // Only add autoprofile command if feature is enabled
@@ -640,13 +653,12 @@ export async function startDiscord() {
           const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
           const tickerPrices = {};
           
-          // Import batch price fetcher and use existing resolver
-          const { getPrices } = await import('./cg-batcher.js');
+            // Import smart price service with fallback logic
+  const { default: smartPriceService } = await import('./smart-price-service.js');
           
-          // Use hybrid approach: Symbol index first, minimal API fallback
-          const resolvedTickers = [];
-          const { resolveSymbolToId } = await import('./symbol-index.js');
-          const { resolveCoinId } = await import('./resolve.js');
+                     // Use hybrid approach: Symbol index first, smart resolver API fallback
+           const resolvedTickers = [];
+           const { resolveSymbolToId } = await import('./symbol-index.js');
           
           // Phase 1: Resolve using symbol index (instant, no API calls)
           for (const ticker of uniqueTickers) {
@@ -671,7 +683,7 @@ export async function startDiscord() {
                   await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
                 }
                 
-                const coinId = await resolveCoinId(tickerData.ticker);
+                                 const coinId = await smartResolver.resolve(tickerData.ticker);
                 if (coinId) {
                   // Update in resolvedTickers array
                   const tickerIndex = resolvedTickers.findIndex(r => r.ticker === tickerData.ticker);
@@ -696,8 +708,8 @@ export async function startDiscord() {
             }
           });
           
-          // Batch fetch all prices at once
-          const prices = await getPrices(validCoinIds);
+          // Use smart price service with intelligent fallback
+          const prices = await smartPriceService.getSmartPrices(validCoinIds);
           
           // Map prices back to tickers
           validCoinIds.forEach((coinId, index) => {
@@ -810,6 +822,83 @@ export async function startDiscord() {
         await i.editReply({ embeds: [embed] });
       }
 
+      if (i.commandName === 'resolver-stats') {
+        await i.deferReply();
+        
+        const stats = await smartResolver.getStats();
+        
+        if (stats.error) {
+          await i.editReply(`❌ Stats unavailable: ${stats.error}`);
+          return;
+        }
+        
+        const cacheHitRate = stats.totalCacheHits > 0 ? 
+          ((stats.totalCacheHits / (stats.totalCacheHits + stats.recentFailures)) * 100).toFixed(1) : 0;
+        
+        const embed = new EmbedBuilder()
+          .setTitle('🧠 Smart Resolver v2 Statistics')
+          .setColor(0x00ff88)
+          .setDescription(
+            `**Learning Status:**\n` +
+            `📚 Learned Mappings: **${stats.learnedMappings}**\n` +
+            `🚫 Banned Mappings: **${stats.bannedMappings}**\n` +
+            `🆕 Recent Learnings (24h): **${stats.recentLearnings}**\n` +
+            `❌ Active Failures (in backoff): **${stats.activeFallures}**\n\n` +
+            
+            `**Performance:**\n` +
+            `🎯 Cache Hit Rate: **${cacheHitRate}%**\n` +
+            `📊 Total Cache Hits: **${stats.totalCacheHits.toLocaleString()}**\n` +
+            `💾 Memory Cache: **${stats.memoryCacheSize}** entries\n` +
+            `⏳ Hit Buffer: **${stats.hitBufferSize}** pending\n\n` +
+            
+            `**Security:**\n` +
+            `🛡️ Poisoning Protection: **Active**\n` +
+            `🔥 Warmup: **${stats.warmupComplete ? 'Complete' : 'Pending'}**\n` +
+            `🤖 Learning: **Active with validation**`
+          )
+          .setFooter({ text: 'V2: Enhanced with anti-poisoning • Blocks wrapped/staked/stable coins' });
+        
+        await i.editReply({ embeds: [embed] });
+      }
+
+      if (i.commandName === 'resolver-relearn') {
+        await i.deferReply();
+        
+        const ticker = i.options.getString('ticker');
+        console.log(`[ADMIN] Force relearning ticker: ${ticker}`);
+        
+        const result = await smartResolver.forceRelearn(ticker);
+        
+        if (result) {
+          await i.editReply(`✅ Successfully relearned: **${ticker.toUpperCase()}** → **${result}**`);
+        } else {
+          await i.editReply(`❌ Failed to relearn **${ticker.toUpperCase()}** - ticker may not exist on CoinGecko`);
+        }
+      }
+
+      if (i.commandName === 'resolver-ban') {
+        await i.deferReply();
+        
+        // Admin only command
+        if (i.user.id !== '396270927811313665') {
+          await i.editReply(`❌ This command is admin-only. Your ID: ${i.user.id}`);
+          return;
+        }
+        
+        const ticker = i.options.getString('ticker');
+        const reason = i.options.getString('reason') || 'admin_banned';
+        
+        console.log(`[ADMIN] Banning ticker: ${ticker} (${reason})`);
+        
+        const success = await smartResolver.forceBan(ticker, reason);
+        
+        if (success) {
+          await i.editReply(`🚫 Successfully banned: **${ticker.toUpperCase()}** (${reason})`);
+        } else {
+          await i.editReply(`❌ Failed to ban **${ticker.toUpperCase()}** - invalid ticker`);
+        }
+      }
+
       if (i.commandName === 'autoprofile') {
         if (!enableAuto) {
           await i.reply({ content: 'Auto-profile features are currently disabled.', flags: 64 });
@@ -854,8 +943,7 @@ async function handlePriceCommand(message, tickersInput) {
       // First, resolve tickers to coin IDs using the existing resolver
       const resolvePromises = tickers.map(async ticker => {
         try {
-          const { resolveCoinId } = await import('./resolve.js');
-          const coinId = await resolveCoinId(ticker);
+          const coinId = await smartResolver.resolve(ticker);
           return { ticker, coinId };
         } catch (err) {
           console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
@@ -875,8 +963,9 @@ async function handlePriceCommand(message, tickersInput) {
         }
       });
       
-      // Use the batching system to fetch all prices in minimal API calls
-      const prices = await getPrices(validCoinIds);
+      // Use smart price service with intelligent fallback
+      const { default: smartPriceService } = await import('./smart-price-service.js');
+      const prices = await smartPriceService.getSmartPrices(validCoinIds);
       
       // Map prices back to tickers and fetch additional data
       const tickerData = {};
@@ -1167,8 +1256,7 @@ async function handlePositionsCommand(message, target) {
           // First, resolve tickers to coin IDs using the existing resolver
           const resolvePromises = uniqueTickers.map(async ticker => {
             try {
-              const { resolveCoinId } = await import('./resolve.js');
-              const coinId = await resolveCoinId(ticker);
+              const coinId = await smartResolver.resolve(ticker);
               return { ticker, coinId };
             } catch (err) {
               console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
@@ -1188,8 +1276,9 @@ async function handlePositionsCommand(message, target) {
             }
           });
           
-          // Use the batching system to fetch all prices in minimal API calls
-          const prices = await getPrices(validCoinIds);
+          // Use smart price service with intelligent fallback
+          const { default: smartPriceService } = await import('./smart-price-service.js');
+          const prices = await smartPriceService.getSmartPrices(validCoinIds);
           
           // Map prices back to tickers
           validCoinIds.forEach((coinId, index) => {
@@ -1284,8 +1373,7 @@ async function handlePositionsCommand(message, target) {
           // First, resolve tickers to coin IDs using the existing resolver
           const resolvePromises = uniqueTickers.map(async ticker => {
             try {
-              const { resolveCoinId } = await import('./resolve.js');
-              const coinId = await resolveCoinId(ticker);
+              const coinId = await smartResolver.resolve(ticker);
               return { ticker, coinId };
             } catch (err) {
               console.log(`[DEBUG] Failed to resolve ${ticker}:`, err.message);
@@ -1305,8 +1393,9 @@ async function handlePositionsCommand(message, target) {
             }
           });
           
-          // Use the batching system to fetch all prices in minimal API calls
-          const prices = await getPrices(validCoinIds);
+          // Use smart price service with intelligent fallback
+          const { default: smartPriceService } = await import('./smart-price-service.js');
+          const prices = await smartPriceService.getSmartPrices(validCoinIds);
           
           // Map prices back to tickers
           validCoinIds.forEach((coinId, index) => {

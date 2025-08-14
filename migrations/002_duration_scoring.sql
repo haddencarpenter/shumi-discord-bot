@@ -12,3 +12,4 @@ ALTER TABLE competitions ADD COLUMN IF NOT EXISTS scoring_mode TEXT DEFAULT 'dur
 UPDATE trades 
 SET duration_bonus_pct = 0, final_score = pnl_pct 
 WHERE status = 'open' AND duration_bonus_pct IS NULL;
+
