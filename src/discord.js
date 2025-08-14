@@ -593,7 +593,12 @@ export async function startDiscord() {
             
             results.push(result);
           } catch (err) {
-            results.push(`**${ticker.toUpperCase()}** not found`);
+            // Check if it's a single letter or very short input
+            if (ticker.length <= 2) {
+              results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
+            } else {
+              results.push(`**${ticker.toUpperCase()}** not found`);
+            }
           }
           
           if (tickers.length > 1) {
@@ -1049,6 +1054,8 @@ async function handlePriceCommand(message, tickersInput) {
           } catch (err) {
             if (err.message.includes('429') || err.message.includes('rate limit')) {
               results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+            } else if (ticker.length <= 2) {
+              results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
             } else {
               results.push(`**${ticker.toUpperCase()}** not found`);
             }
@@ -1091,6 +1098,8 @@ async function handlePriceCommand(message, tickersInput) {
         } catch (err) {
           if (err.message.includes('429') || err.message.includes('rate limit')) {
             results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+          } else if (ticker.length <= 2) {
+            results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
           } else {
             results.push(`**${ticker.toUpperCase()}** not found`);
           }
@@ -1135,6 +1144,8 @@ async function handlePriceCommand(message, tickersInput) {
     } catch (err) {
       if (err.message.includes('429') || err.message.includes('rate limit')) {
         results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+      } else if (ticker.length <= 2) {
+        results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
       } else {
         results.push(`**${ticker.toUpperCase()}** not found`);
       }
