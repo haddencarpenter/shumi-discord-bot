@@ -3,6 +3,7 @@
 // NO hardcoded mappings - everything comes from live CG data
 
 import axios from 'axios';
+import { CANONICAL } from './resolve.js';
 
 // In-memory symbol index
 let symbolIndex = new Map(); // symbol -> coinId
@@ -142,6 +143,15 @@ export async function buildSymbolIndex(force = false) {
  */
 export function resolveSymbolToId(symbol) {
   const normalizedSymbol = symbol.toLowerCase().trim();
+  
+  // Check CANONICAL mapping first (takes precedence over symbol index)
+  if (CANONICAL[normalizedSymbol]) {
+    return {
+      coinId: CANONICAL[normalizedSymbol],
+      method: 'canonical',
+      source: 'manual-override'
+    };
+  }
   
   if (symbolIndex.has(normalizedSymbol)) {
     return {
