@@ -430,6 +430,16 @@ export async function startDiscord() {
       
       const ticker = i.options.getString('ticker') || i.options.getString('tickers') || '';
       console.log(`[SLASH] user:${i.user.username} cmd:${i.commandName} ticker:${ticker}`);
+
+      async function safeDefer(interaction) {
+        try {
+          if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply();
+          }
+        } catch (err) {
+          console.log('[SLASH] defer skipped:', err.message);
+        }
+      }
       
       if (i.commandName === 'ping') {
         await i.reply({ content: 'Pong! Bot is alive and responding.' });
@@ -552,7 +562,7 @@ export async function startDiscord() {
       // (Implementation similar to trade command but simplified)
 
       if (i.commandName === 'positions') {
-        await i.deferReply();
+        await safeDefer(i);
         
         const target = i.options.getString('target');
         const { competition_id } = await ensureCurrentWeek();
@@ -634,7 +644,7 @@ export async function startDiscord() {
       }
 
       if (i.commandName === 'price') {
-        await i.deferReply();
+        await safeDefer(i);
         
         const tickersInput = i.options.getString('tickers');
         const tickers = tickersInput.split(/\s+/).slice(0, 6);
@@ -681,7 +691,7 @@ export async function startDiscord() {
       }
 
       if (i.commandName === 'leaderboard') {
-        await i.deferReply();
+        await safeDefer(i);
         const { competition_id } = await ensureCurrentWeek();
         
         // Get closed trades leaderboard
@@ -856,7 +866,7 @@ export async function startDiscord() {
       }
 
       if (i.commandName === 'resolver-stats') {
-        await i.deferReply();
+        await safeDefer(i);
         
         const stats = await smartResolver.getStats();
         
@@ -895,7 +905,7 @@ export async function startDiscord() {
       }
 
       if (i.commandName === 'resolver-relearn') {
-        await i.deferReply();
+        await safeDefer(i);
         
         const ticker = i.options.getString('ticker');
         console.log(`[ADMIN] Force relearning ticker: ${ticker}`);
@@ -910,7 +920,7 @@ export async function startDiscord() {
       }
 
       if (i.commandName === 'resolver-ban') {
-        await i.deferReply();
+        await safeDefer(i);
         
         // Admin only command
         if (i.user.id !== '396270927811313665') {
