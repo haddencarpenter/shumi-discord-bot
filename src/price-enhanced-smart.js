@@ -35,6 +35,92 @@ async function rateLimit() {
 export async function fetchCoinData(ticker) {
   const input = ticker.toLowerCase().trim();
   
+  // Special cases: Bitcoin dominance vs. Binance BTCDOM perpetual
+  {
+    const normalized = input.replace(/[\s._-]/g, '');
+    // 1) Dominance ratio (BTC.D)
+    if (normalized === 'btcd' || normalized === 'btcdominance') {
+      const config = getCoinGeckoConfig();
+      try {
+        const resp = await axios.get(`${config.baseURL}/global`, {
+          timeout: config.timeout,
+          headers: config.headers
+        });
+        const btcDom = Number(resp.data?.data?.market_cap_percentage?.btc);
+        if (!isFinite(btcDom)) {
+          throw new Error('global dominance unavailable');
+        }
+        const result = {
+          price: btcDom, // percentage value
+          change24h: 0,
+          marketCap: null,
+          coinId: 'btcd',
+          coinName: 'Bitcoin Dominance (ratio)',
+          symbol: 'BTC.D',
+          isPair: false,
+          resolvedFrom: 'btcd',
+          method: 'global-btc-dominance',
+          source: 'coingecko-global'
+        };
+        const { shortVersion } = await import('./version.js');
+        console.log(JSON.stringify({
+          evt: 'price_reply',
+          q: ticker,
+          coinId: 'btcd',
+          method: result.method,
+          source: result.source,
+          ts: Date.now(),
+          v: shortVersion
+        }));
+        return result;
+      } catch (err) {
+        console.error(JSON.stringify({ evt: 'cg_error', token: ticker, msg: String(err), ts: Date.now() }));
+        throw new Error(`price not found for ${ticker}`);
+      }
+    }
+    // 2) Binance perpetual index (BTCDOMUSDT)
+    if (normalized === 'btcdom') {
+      try {
+        // Use Binance Futures 24hr ticker for price and change
+        const url = `https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCDOMUSDT`;
+        const resp = await axios.get(url, { timeout: 5000 });
+        const lastPrice = Number(resp.data?.lastPrice ?? resp.data?.lastPrice ?? resp.data?.lastPrice);
+        const changePct = Number(resp.data?.priceChangePercent ?? 0);
+        if (!isFinite(lastPrice)) {
+          throw new Error('binance futures price unavailable');
+        }
+        const result = {
+          price: lastPrice,
+          change24h: changePct,
+          marketCap: null,
+          coinId: 'btcdom',
+          coinName: 'BTCDOM Perpetual (Binance)',
+          symbol: 'BTCDOM',
+          isPair: false,
+          resolvedFrom: 'btcdom',
+          method: 'binance-futures',
+          source: 'binance-futures'
+        };
+        const { shortVersion } = await import('./version.js');
+        console.log(JSON.stringify({
+          evt: 'price_reply',
+          q: ticker,
+          coinId: 'btcdom',
+          method: result.method,
+          source: result.source,
+          ts: Date.now(),
+          v: shortVersion
+        }));
+        // Cache it
+        priceCache.set('btcdom', { data: result, timestamp: Date.now() });
+        return result;
+      } catch (err) {
+        console.error(JSON.stringify({ evt: 'binance_error', token: ticker, msg: String(err), ts: Date.now() }));
+        throw new Error(`price not found for ${ticker}`);
+      }
+    }
+  }
+  
   // Handle stablecoins at fixed $1.00
   if (input === 'usdt' || input === 'usdc') {
     const result = {

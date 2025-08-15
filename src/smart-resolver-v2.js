@@ -173,6 +173,16 @@ class SmartResolverV2 {
       return null;
     }
 
+    // Special-case: Bitcoin Dominance virtual ticker (BTCDOM)
+    if (ticker === 'btcdom') {
+      console.log(`[SMART_RESOLVER_V2] Special ticker: ${rawInput} → btcdom`);
+      return 'btcdom';
+    }
+    if (ticker === 'btcd' || ticker === 'btcdominance') {
+      console.log(`[SMART_RESOLVER_V2] Special ticker: ${rawInput} → btcd`);
+      return 'btcd';
+    }
+
     const chainHint = this.extractChainHint(rawInput, context);
     const cacheKey = this.getCacheKey(ticker, chainHint);
     

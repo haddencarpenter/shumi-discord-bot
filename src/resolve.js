@@ -47,6 +47,10 @@ const CANONICAL = {
   omni: "omni-network",  // Omni Network (modern) not the old Mastercoin
   mavia: "heroes-of-mavia",  // Heroes of Mavia
   troll: "troll-2",  // TROLL (correct coin with higher market cap)
+  // Virtual indices
+  btcdom: "btcdom", // Bitcoin Dominance (from CoinGecko /global)
+  btcd: "btcd",
+  btcdominance: "btcd", // explicit ratio alias
   // add more as you see fit
 };
 
