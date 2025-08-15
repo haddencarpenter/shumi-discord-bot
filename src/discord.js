@@ -593,7 +593,12 @@ export async function startDiscord() {
             
             results.push(result);
           } catch (err) {
-            results.push(`**${ticker.toUpperCase()}** not found`);
+            // Check if it's a single letter or very short input
+            if (ticker.length <= 2) {
+              results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
+            } else {
+              results.push(`**${ticker.toUpperCase()}** not found`);
+            }
           }
           
           if (tickers.length > 1) {
@@ -649,78 +654,35 @@ export async function startDiscord() {
         });
         
         if (openPositions.length > 0) {
-          // Get unique tickers and batch resolve to coin IDs
+          // Get unique tickers for price fetching
           const uniqueTickers = [...new Set(openPositions.map(p => p.ticker))];
           const tickerPrices = {};
           
-            // Import smart price service with fallback logic
-  const { default: smartPriceService } = await import('./smart-price-service.js');
+          console.log('[DEBUG] Fetching prices for', uniqueTickers.length, 'unique tickers...');
           
-                     // Use hybrid approach: Symbol index first, smart resolver API fallback
-           const resolvedTickers = [];
-           const { resolveSymbolToId } = await import('./symbol-index.js');
-          
-          // Phase 1: Resolve using symbol index (instant, no API calls)
-          for (const ticker of uniqueTickers) {
-            const indexResult = resolveSymbolToId(ticker);
-            if (indexResult) {
-              resolvedTickers.push({ ticker, coinId: indexResult.coinId });
-              console.log(`[DEBUG] Index resolved ${ticker} → ${indexResult.coinId}`);
-            } else {
-              resolvedTickers.push({ ticker, coinId: null });
-              console.log(`[DEBUG] ${ticker} not in symbol index (top 300), skipping API resolution for leaderboard`);
-            }
-          }
-          
-          // Phase 2: For critical failures only, use API (but limit to top 5 missing)
-          const unresolved = resolvedTickers.filter(r => !r.coinId).slice(0, 5); // Limit API calls
-          if (unresolved.length > 0) {
-            console.log(`[DEBUG] Attempting API resolution for ${unresolved.length} critical tickers...`);
-            for (let i = 0; i < unresolved.length; i++) {
-              const tickerData = unresolved[i];
-              try {
-                if (i > 0) {
-                  await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
-                }
-                
-                                 const coinId = await smartResolver.resolve(tickerData.ticker);
-                if (coinId) {
-                  // Update in resolvedTickers array
-                  const tickerIndex = resolvedTickers.findIndex(r => r.ticker === tickerData.ticker);
-                  if (tickerIndex !== -1) {
-                    resolvedTickers[tickerIndex].coinId = coinId;
-                    console.log(`[DEBUG] API resolved ${tickerData.ticker} → ${coinId}`);
-                  }
-                }
-              } catch (err) {
-                console.log(`[DEBUG] API resolution failed for ${tickerData.ticker}:`, err.message);
-              }
-            }
-          }
-          const tickerToCoinId = {};
-          const validCoinIds = [];
-          
-          // Build mapping
-          resolvedTickers.forEach(r => {
-            if (r.coinId) {
-              tickerToCoinId[r.ticker] = r.coinId;
-              validCoinIds.push(r.coinId);
+          // Use the proven fetchCoinData approach (same as working section at line 1571)
+          const pricePromises = uniqueTickers.map(async ticker => {
+            try {
+              const { fetchCoinData } = await import('./price-enhanced-smart.js');
+              const coinData = await fetchCoinData(ticker);
+              return { ticker, price: coinData.price };
+            } catch (err) {
+              console.log(`[DEBUG] Failed to get price for ${ticker}:`, err.message);
+              return { ticker, price: null };
             }
           });
           
-          // Use smart price service with intelligent fallback
-          const prices = await smartPriceService.getSmartPrices(validCoinIds);
+          const priceResults = await Promise.all(pricePromises);
           
-          // Map prices back to tickers
-          validCoinIds.forEach((coinId, index) => {
-            // Find which ticker this coinId belongs to
-            const ticker = Object.keys(tickerToCoinId).find(t => tickerToCoinId[t] === coinId);
-            if (ticker && prices[index]) {
-              tickerPrices[ticker] = prices[index].price;
-            } else if (ticker) {
-              tickerPrices[ticker] = null;
+          // Build price mapping
+          priceResults.forEach(result => {
+            if (result.price) {
+              tickerPrices[result.ticker] = result.price;
+              console.log(`[DEBUG] Price for ${result.ticker}: $${result.price}`);
             }
           });
+          
+          console.log('[DEBUG] Starting P&L calculations for', openPositions.length, 'positions');
           
           // Calculate P&L and duration bonus for each position
           for (const pos of openPositions) {
@@ -779,7 +741,7 @@ export async function startDiscord() {
             // Check if we have P&L data for this user
             if (userPositions[username] && userPositions[username].length > 0) {
               const pnlArray = userUnrealizedPnl[username];
-              const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0) / pnlArray.length;
+              const totalPnl = pnlArray.reduce((sum, pnl) => sum + pnl, 0);
               const totalText = ` | Total: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}%`;
               return `${idx+1}. **${username}**: ${userPositions[username].join(' | ')}${totalText}`;
             } else {
@@ -1049,6 +1011,8 @@ async function handlePriceCommand(message, tickersInput) {
           } catch (err) {
             if (err.message.includes('429') || err.message.includes('rate limit')) {
               results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+            } else if (ticker.length <= 2) {
+              results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
             } else {
               results.push(`**${ticker.toUpperCase()}** not found`);
             }
@@ -1091,6 +1055,8 @@ async function handlePriceCommand(message, tickersInput) {
         } catch (err) {
           if (err.message.includes('429') || err.message.includes('rate limit')) {
             results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+          } else if (ticker.length <= 2) {
+            results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
           } else {
             results.push(`**${ticker.toUpperCase()}** not found`);
           }
@@ -1135,6 +1101,8 @@ async function handlePriceCommand(message, tickersInput) {
     } catch (err) {
       if (err.message.includes('429') || err.message.includes('rate limit')) {
         results.push(`**${ticker.toUpperCase()}** rate limited (try again in 1 min)`);
+      } else if (ticker.length <= 2) {
+        results.push(`**${ticker.toUpperCase()}** is too ambiguous. Please type the full ticker name (e.g., $SONIC, $SOL, $SHIB)`);
       } else {
         results.push(`**${ticker.toUpperCase()}** not found`);
       }
@@ -1555,11 +1523,9 @@ async function handleLeaderboardCommand(message) {
       
       console.log('[DEBUG] Fetching prices for', uniqueTickers.length, 'unique tickers...');
       
-      // Use the existing fetchCoinData function for each ticker
-      // This is simpler and more reliable than dynamic imports
+      // Use the proven fetchCoinData approach (same as working section at line 1571)
       const pricePromises = uniqueTickers.map(async ticker => {
         try {
-          // Import the working function we know exists
           const { fetchCoinData } = await import('./price-enhanced-smart.js');
           const coinData = await fetchCoinData(ticker);
           return { ticker, price: coinData.price };
@@ -1581,7 +1547,7 @@ async function handleLeaderboardCommand(message) {
       
       console.log('[DEBUG] Starting P&L calculations for', openPositions.length, 'positions');
       
-      // Calculate P&L for each position
+      // Calculate P&L and duration bonus for each position
       for (const pos of openPositions) {
         const currentPrice = tickerPrices[pos.ticker];
         if (!currentPrice) {
@@ -1592,6 +1558,7 @@ async function handleLeaderboardCommand(message) {
         const entryPrice = Number(pos.entry_price);
         const side = pos.side || 'long';
         
+        // Calculate P&L
         let pnlPct;
         if (side === 'long') {
           pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
@@ -1599,15 +1566,25 @@ async function handleLeaderboardCommand(message) {
           pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
         }
         
+        // Calculate duration bonus (1% per day, max 7%)
+        const entryTime = new Date(pos.entry_time);
+        const now = new Date();
+        const daysHeld = Math.max(0, (now - entryTime) / (1000 * 60 * 60 * 24));
+        const durationBonus = Math.min(daysHeld * 1, 7); // 1% per day, max 7%
+        
+        // Calculate final score
+        const finalScore = pnlPct + durationBonus;
+        
         // Initialize user data if needed
         if (!userUnrealizedPnl[pos.discord_username]) {
           userUnrealizedPnl[pos.discord_username] = [];
           userPositions[pos.discord_username] = [];
         }
         
-        userUnrealizedPnl[pos.discord_username].push(pnlPct);
+        userUnrealizedPnl[pos.discord_username].push(finalScore);
         const sideSymbol = (pos.side === 'short') ? 'S' : 'L';
-        userPositions[pos.discord_username].push(`${sideSymbol} ${pos.ticker.toUpperCase()} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
+        const bonusIndicator = durationBonus > 0 ? ' *' : '';
+        userPositions[pos.discord_username].push(`${sideSymbol} ${pos.ticker.toUpperCase()} ${finalScore >= 0 ? '+' : ''}${finalScore.toFixed(2)}%${bonusIndicator}`);
       }
     }
     
@@ -1648,7 +1625,7 @@ async function handleLeaderboardCommand(message) {
         // Check if we have P&L data for this user
         if (userPositions[username] && userPositions[username].length > 0) {
           const pnlArray = userUnrealizedPnl[username];
-          const totalScore = pnlArray.reduce((sum, score) => sum + score, 0) / pnlArray.length;
+          const totalScore = pnlArray.reduce((sum, score) => sum + score, 0);
           const totalText = ` | Total: ${totalScore >= 0 ? '+' : ''}${totalScore.toFixed(2)}%`;
           console.log(`[DEBUG] Score line for ${username}:`, userPositions[username].join(' | ') + totalText);
           return `${idx+1}. **${username}**: ${userPositions[username].join(' | ')}${totalText}`;
