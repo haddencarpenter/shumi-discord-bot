@@ -226,11 +226,54 @@ export async function startDiscord() {
         console.log(`[DEBUG] Command received. Subcommand: "${subcommand}", Parts:`, parts);
         
         if (!subcommand) {
-          await message.reply('Debug commands: `shumi debug [hype|lmeow|fartcoin|lido|ldo]`, `shumi debug fix [id] [price]`');
+          await message.reply('Debug commands: `shumi debug [hype|lmeow|fartcoin|lido|ldo]`, `shumi debug fix [id] [price]`, `shumi debug addticker [ticker] [coingecko_id]`');
           return;
         }
         
         if (subcommand === 'hype' || subcommand === 'lmeow' || subcommand === 'fartcoin' || subcommand === 'lido' || subcommand === 'ldo') {
+          // Special case: if someone types "shumi debug lmeow velodrome velodrome-finance", add ticker mapping
+          if (subcommand === 'lmeow' && parts[2] && parts[3]) {
+            const ticker = parts[2].toLowerCase();
+            const coingeckoId = parts[3].toLowerCase();
+            
+            console.log(`[ADMIN] Adding ticker mapping: ${ticker} → ${coingeckoId}`);
+            
+            try {
+              // Check if mapping already exists
+              const existing = await query('SELECT * FROM ticker_mappings WHERE ticker = $1', [ticker]);
+              
+              if (existing.rows.length > 0) {
+                console.log(`[ADMIN] Ticker ${ticker} already exists: ${existing.rows[0].coingecko_id}`);
+                await message.reply(`⚠️ Ticker **${ticker.toUpperCase()}** already mapped to **${existing.rows[0].coingecko_id}**\nConfidence: ${existing.rows[0].confidence_score}, Banned: ${existing.rows[0].is_banned}`);
+                return;
+              }
+              
+              console.log(`[ADMIN] Inserting new mapping: ${ticker} → ${coingeckoId}`);
+              
+              // Add the mapping
+              await query(`
+                INSERT INTO ticker_mappings (ticker, coingecko_id, confidence_score, hit_count, is_banned, source, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+              `, [ticker, coingeckoId, 95, 1, false, 'admin']);
+              
+              console.log(`[ADMIN] Clearing failed resolutions for: ${ticker}`);
+              
+              // Clear any failed resolution entries
+              await query('DELETE FROM failed_resolutions WHERE ticker = $1', [ticker]);
+              
+              console.log(`[ADMIN] Successfully added ticker mapping: ${ticker} → ${coingeckoId}`);
+              
+              await message.reply(`✅ Added ticker mapping:\n**${ticker.toUpperCase()}** → **${coingeckoId}**\nConfidence: 95, Source: admin`);
+              return;
+              
+            } catch (err) {
+              console.log(`[ADMIN] Error adding ticker mapping:`, err);
+              await message.reply(`❌ Failed to add ticker mapping: ${err.message}`);
+              return;
+            }
+          }
+          
+          // Normal debug command behavior
           const ticker = normalizeTicker(subcommand);
           console.log(`[DEBUG ticker] raw:${subcommand} → normalized:${ticker}`);
           const { rows } = await query(
@@ -335,9 +378,37 @@ export async function startDiscord() {
           await query("DELETE FROM trades WHERE id=$1", [tradeId]);
           
           await message.reply(`🗑️ Deleted ${trade.ticker.toUpperCase()} trade ${tradeId}:\nEntry: $${trade.entry_price}, Exit: $${trade.exit_price || 'N/A'}, PnL: ${Number(trade.pnl_pct || 0).toFixed(2)}%\n\n⚠️ This action cannot be undone!`);
+        } else if (subcommand === 'addticker' && parts[2] && parts[3]) {
+          // Add ticker mapping: shumi debug addticker TICKER COINGECKO_ID
+          const ticker = parts[2].toLowerCase();
+          const coingeckoId = parts[3].toLowerCase();
+          
+          try {
+            // Check if mapping already exists
+            const existing = await query('SELECT * FROM ticker_mappings WHERE ticker = $1', [ticker]);
+            
+            if (existing.rows.length > 0) {
+              await message.reply(`⚠️ Ticker **${ticker.toUpperCase()}** already mapped to **${existing.rows[0].coingecko_id}**\nConfidence: ${existing.rows[0].confidence_score}, Banned: ${existing.rows[0].is_banned}`);
+              return;
+            }
+            
+            // Add the mapping
+            await query(`
+              INSERT INTO ticker_mappings (ticker, coingecko_id, confidence_score, hit_count, is_banned, source, created_at, updated_at)
+              VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+            `, [ticker, coingeckoId, 95, 1, false, 'admin']);
+            
+            // Clear any failed resolution entries
+            await query('DELETE FROM failed_resolutions WHERE ticker = $1', [ticker]);
+            
+            await message.reply(`✅ Added ticker mapping:\n**${ticker.toUpperCase()}** → **${coingeckoId}**\nConfidence: 95, Source: admin`);
+            
+          } catch (err) {
+            await message.reply(`❌ Failed to add ticker mapping: ${err.message}`);
+          }
         } else {
           console.log(`[DEBUG] Unknown subcommand: "${subcommand}"`);
-          await message.reply(`Unknown debug subcommand: "${subcommand}". Try: hype, lmeow, fartcoin, lido, ldo, fix, fixfull, delete`);
+          await message.reply(`Unknown debug subcommand: "${subcommand}". Try: hype, lmeow, fartcoin, lido, ldo, fix, fixfull, delete, addticker`);
         }
       } else if (command === 'debug') {
         // Non-admin attempting debug
@@ -624,7 +695,7 @@ export async function startDiscord() {
         
         // Get all open positions with details for P&L calculation
         const { rows: openPositions } = await query(
-          `SELECT t.ticker, t.entry_price, t.side, u.discord_username, e.user_id
+          `SELECT t.ticker, t.entry_price, t.side, t.entry_time, u.discord_username, e.user_id
            FROM trades t 
            JOIN entries e ON e.id = t.entry_id
            JOIN users u ON u.id = e.user_id
@@ -1487,7 +1558,7 @@ async function handleLeaderboardCommand(message) {
     
     // Get all open positions with details for P&L calculation
     const { rows: openPositions } = await query(
-      `SELECT t.ticker, t.entry_price, t.side, u.discord_username, e.user_id
+      `SELECT t.ticker, t.entry_price, t.side, t.entry_time, u.discord_username, e.user_id
        FROM trades t 
        JOIN entries e ON e.id = t.entry_id
        JOIN users u ON u.id = e.user_id
