@@ -517,6 +517,13 @@ export async function startDiscord() {
                 pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
               }
               
+              // Duration bonus: 1% per day held, max 7%, only if P&L is non-negative
+              const entryTime = new Date(r.entry_time);
+              const now = new Date();
+              const daysHeld = Math.max(0, (now - entryTime) / (1000 * 60 * 60 * 24));
+              const durationBonus = Math.min(daysHeld * 1, 7);
+              const finalScore = pnlPct >= 0 ? (pnlPct + durationBonus) : pnlPct;
+
               // Debug logging for extreme P&L values
               if (Math.abs(pnlPct) > 1000) {
                 console.log(`[P&L DEBUG] ${r.ticker}: entry=$${entryPrice} current=$${currentPrice} pnl=${pnlPct.toFixed(2)}%`);
@@ -527,7 +534,7 @@ export async function startDiscord() {
                 pnlPct = pnlPct > 0 ? 999.99 : -999.99;
               }
               
-              positionsWithPnl.push({ ...r, currentPrice, pnlPct });
+              positionsWithPnl.push({ ...r, currentPrice, pnlPct, durationBonus, finalScore });
             } catch (err) {
               console.log(`Failed to fetch price for ${r.ticker}: ${err.message}`);
               positionsWithPnl.push({ ...r, currentPrice: null, pnlPct: 0 });
@@ -547,16 +554,18 @@ export async function startDiscord() {
               
               let pnlText = '';
               if (r.currentPrice !== null) {
-                const pnlColor = r.pnlPct >= 0 ? '🟢' : '🔴';
-                const pnlSign = r.pnlPct >= 0 ? '+' : '';
-                pnlText = ` ${pnlColor}${pnlSign}${r.pnlPct.toFixed(2)}%`;
+                const score = typeof r.finalScore === 'number' ? r.finalScore : r.pnlPct;
+                const pnlColor = score >= 0 ? '🟢' : '🔴';
+                const pnlSign = score >= 0 ? '+' : '';
+                const bonusIndicator = (typeof r.durationBonus === 'number' && r.durationBonus > 0 && r.pnlPct >= 0) ? ' *' : '';
+                pnlText = ` ${pnlColor}${pnlSign}${score.toFixed(2)}%${bonusIndicator}`;
               } else {
                 pnlText = ' ⏳';
               }
               
               return `${sideSymbol} **${r.ticker.toUpperCase()}** $${entryPrice}${pnlText}`;
             }).join('\n'))
-            .setFooter({ text: `Total: ${rows.length} open positions • Live P&L` });
+            .setFooter({ text: `Total: ${rows.length} open positions • Live P&L + duration bonus` });
           
           await i.editReply({ embeds: [embed] });
         }
@@ -709,8 +718,13 @@ export async function startDiscord() {
             const daysHeld = Math.max(0, (now - entryTime) / (1000 * 60 * 60 * 24));
             const durationBonus = Math.min(daysHeld * 1, 7); // 1% per day, max 7%
             
-            // Calculate final score
-            const finalScore = pnlPct + durationBonus;
+            // Calculate final score with condition for bonus application
+            let finalScore;
+            if (pnlPct >= 0) {
+              finalScore = pnlPct + durationBonus;
+            } else {
+              finalScore = pnlPct; // No bonus for negative P&L
+            }
             
             // Initialize user data if needed
             if (!userUnrealizedPnl[pos.discord_username]) {
@@ -720,7 +734,7 @@ export async function startDiscord() {
             
             userUnrealizedPnl[pos.discord_username].push(finalScore);
             const sideSymbol = (pos.side === 'short') ? 'S' : 'L';
-            const bonusIndicator = durationBonus > 0 ? ' *' : '';
+            const bonusIndicator = (durationBonus > 0 && pnlPct >= 0) ? ' *' : '';
             userPositions[pos.discord_username].push(`${sideSymbol} ${pos.ticker.toUpperCase()} ${finalScore >= 0 ? '+' : ''}${finalScore.toFixed(2)}%${bonusIndicator}`);
           }
         }
@@ -1572,8 +1586,13 @@ async function handleLeaderboardCommand(message) {
         const daysHeld = Math.max(0, (now - entryTime) / (1000 * 60 * 60 * 24));
         const durationBonus = Math.min(daysHeld * 1, 7); // 1% per day, max 7%
         
-        // Calculate final score
-        const finalScore = pnlPct + durationBonus;
+        // Calculate final score with condition for bonus application
+        let finalScore;
+        if (pnlPct >= 0) {
+          finalScore = pnlPct + durationBonus;
+        } else {
+          finalScore = pnlPct; // No bonus for negative P&L
+        }
         
         // Initialize user data if needed
         if (!userUnrealizedPnl[pos.discord_username]) {
